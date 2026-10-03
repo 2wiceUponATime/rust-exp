@@ -1,3 +1,6 @@
+#!/bin/sh
+set -e
+
 TARGET_DIR=target/thumbv7em-none-eabihf/release
 
 root=$(realpath $(dirname "$0"))
@@ -17,7 +20,7 @@ if [ -n "$VEX_TOOLS_PATH" ]; then
 	export PATH="$VEX_TOOLS_PATH/gcc/bin:$PATH"
 fi
 
-case "${1:-build}" in
+case "$1" in
 build)
 	cargo build -r
 	arm-none-eabi-objcopy -O binary "$TARGET_DIR/$bin_name" "$TARGET_DIR/$bin_name.bin"
@@ -26,7 +29,7 @@ upload)
   "$VEXCOM_BIN" --write "$TARGET_DIR/$bin_name.bin"
   ;;
 *)
-	echo "usage: $0 [build]" >&2
+	echo "usage: $0 {build,upload}" >&2
 	exit 1
 	;;
 esac

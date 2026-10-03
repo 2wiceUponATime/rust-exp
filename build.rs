@@ -21,29 +21,26 @@ fn main() {
         .compiler(format!("{tools}/clang/bin/clang"))
         .std("gnu++17")
         .flags([
-            "--target=thumbv7-none-eabi",
+            "-mcpu=cortex-m7",
             "-fshort-enums",
+            "-fno-rtti",
+            "-fno-exceptions",
+            "-fno-threadsafe-statics",
+            "-Werror=return-type",
             "-Wno-unknown-attributes",
             "-Wno-unused-parameter",
             "-U__INT32_TYPE__",
             "-U__UINT32_TYPE__",
-            "-D__INT32_TYPE__=long",
-            "-D__UINT32_TYPE__=unsigned long",
-            "-mthumb",
-            "-mcpu=cortex-m7",
-            "-mfpu=fpv5-d16",
-            "-mfloat-abi=hard",
-            "-Werror=return-type",
-            "-fno-rtti",
-            "-fno-threadsafe-statics",
-            "-fno-exceptions",
-            "-std=gnu++17",
         ])
-        .include(format!("{sdk}/include"))
-        .include(format!("{sdk}/clang/8.0.0/include"))
-        .include(format!("{sdk}/gcc/include"))
-        .include(format!("{sdk}/gcc/include/c++/7.3.1"))
-        .include(format!("{sdk}/gcc/include/c++/7.3.1/arm-none-eabi"))
+        .define("__INT32_TYPE__", "long")
+        .define("__UINT32_TYPE__", "unsigned long")
+        .includes([
+            format!("{sdk}/include"),
+            format!("{sdk}/clang/8.0.0/include"),
+            format!("{sdk}/gcc/include"),
+            format!("{sdk}/gcc/include/c++/7.3.1"),
+            format!("{sdk}/gcc/include/c++/7.3.1/arm-none-eabi"),
+        ])
         .file("shim/shim.cpp")
         .compile("shim");
 }
