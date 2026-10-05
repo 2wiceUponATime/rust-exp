@@ -15,6 +15,8 @@ fn main() {
         println!("cargo:rustc-link-lib=static={lib}");
     }
 
+    println!("cargo:rerun-if-changed=shim/shim.cpp");
+
     cc::Build::new()
         .cpp(true)
         .cpp_link_stdlib(None)
