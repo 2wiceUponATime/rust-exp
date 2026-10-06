@@ -16,10 +16,6 @@ if [ -n "$BIN_NAME" ]; then
   bin_name="$BIN_NAME"
 fi
 
-if [ -n "$VEX_TOOLS_PATH" ]; then
-	export PATH="$VEX_TOOLS_PATH/gcc/bin:$PATH"
-fi
-
 case "$1" in
 build)
 	cargo build -r
