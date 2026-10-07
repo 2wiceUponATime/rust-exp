@@ -22,7 +22,8 @@ build)
 	arm-none-eabi-objcopy -O binary "$TARGET_DIR/$bin_name" "$TARGET_DIR/$bin_name.bin"
 	;;
 upload)
-  "$VEXCOM_BIN" --write "$TARGET_DIR/$bin_name.bin"
+  shift
+  "$VEXCOM_BIN" --write "$TARGET_DIR/$bin_name.bin" "$@"
   ;;
 *)
 	echo "usage: $0 {build,upload}" >&2
