@@ -1,14 +1,13 @@
 use std::{
-    fs::{self, OpenOptions},
-    io::Write,
+    fs::{self, OpenOptions}, io::Write, process::Command,
 };
 
 use regex::Regex;
 
-fn to_rust_type(ty: &str) -> Result<Option<&str>, String> {
+fn to_rust_type(ty: &str) -> Result<&str, String> {
     let ty = ty.trim();
-    Ok(Some(match ty {
-        "void" => return Ok(None),
+    Ok(match ty {
+        "void" => "()",
         "uint32_t" => "u32",
         "uint8_t" => "u8",
         "int" | "int32_t" => "i32",
@@ -22,7 +21,7 @@ fn to_rust_type(ty: &str) -> Result<Option<&str>, String> {
         "smartdrive *" => "*mut RawSmartdrive",
         "DriveDirection" | "TurnDirection" => ty,
         _ => return Err(format!("Unknown type: {}", ty)),
-    }))
+    })
 }
 
 fn main() {
@@ -98,12 +97,10 @@ macro_rules! opaque {{
 
 opaque!(RawBrain, RawMotor, RawInertial, RawDistance, RawSmartdrive);
 
-unsafe extern "C" {{
-"#
-    )
+unsafe extern "C" {{"#)
     .unwrap();
     for captures in re.captures_iter(&shim_src) {
-        write!(out, "    pub fn {}(", captures.get(2).unwrap().as_str()).unwrap();
+        write!(out, "pub fn {}(", captures.get(2).unwrap().as_str()).unwrap();
         let args: Vec<_> = captures.get(3).unwrap().as_str().split(',').collect();
         for (i, arg) in args.iter().enumerate() {
             if arg.is_empty() {
@@ -112,22 +109,29 @@ unsafe extern "C" {{
             let captures = arg_re.captures(arg).unwrap();
             write!(
                 out,
-                "{}: {}",
+                "{}:{}",
                 captures.get(2).unwrap().as_str(),
-                to_rust_type(captures.get(1).unwrap().as_str())
-                    .unwrap()
-                    .expect("Unexpected void")
+                to_rust_type(captures.get(1).unwrap().as_str()).unwrap()
             )
             .unwrap();
             if i != args.len() - 1 {
-                write!(out, ", ").unwrap();
+                write!(out, ",").unwrap();
             }
         }
         write!(out, ")").unwrap();
-        if let Some(t) = to_rust_type(captures.get(1).unwrap().as_str()).unwrap() {
-            write!(out, " -> {t}").unwrap();
-        }
-        write!(out, ";\n").unwrap();
+        write!(
+            out,
+            "->{}",
+            to_rust_type(captures.get(1).unwrap().as_str()).unwrap()
+        )
+        .unwrap();
+        write!(out, ";").unwrap();
     }
-    write!(out, "}}\n").unwrap();
+    write!(out, "}}").unwrap();
+
+    let status = Command::new("rustfmt")
+        .arg("src/ffi.rs")
+        .status()
+        .unwrap();
+    assert!(status.success(), "rustfmt failed");
 }
