@@ -15,71 +15,15 @@ use core::{
 use ffi::*;
 
 mod allocator;
-
-mod ffi {
-    use super::*;
-    use core::{
-        ffi::c_char,
-        marker::{PhantomData, PhantomPinned},
-    };
-
-    macro_rules! opaque {
-        ($($name:ident),+ $(,)?) => {
-            $(
-                #[repr(C)]
-                pub struct $name {
-                    _data: [u8; 0],
-                    _marker: PhantomData<(*mut u8, PhantomPinned)>,
-                }
-            )+
-        };
-    }
-
-    opaque!(RawBrain, RawMotor, RawInertial, RawSmartdrive);
-
-    unsafe extern "C" {
-        pub fn exp_printf(s: *const c_char);
-        pub fn exp_flush_stdout() -> i32;
-
-        pub fn exp_thread_sleep(time: u32);
-
-        pub fn exp_brain_new() -> *mut RawBrain;
-        pub fn exp_brain_free(b: *mut RawBrain);
-        pub fn exp_brain_screen_clear(b: *mut RawBrain);
-        pub fn exp_brain_screen_print_at(b: *mut RawBrain, x: i32, y: i32, s: *const c_char);
-
-        pub fn exp_motor_new(port: u8, reverse: bool) -> *mut RawMotor;
-        pub fn exp_motor_free(m: *mut RawMotor);
-
-        pub fn exp_inertial_new() -> *mut RawInertial;
-        pub fn exp_inertial_new_port(port: u8) -> *mut RawInertial;
-        pub fn exp_inertial_free(i: *mut RawInertial);
-        pub fn exp_inertial_calibrate(i: *mut RawInertial);
-        pub fn exp_inertial_is_calibrating(i: *mut RawInertial) -> bool;
-        pub fn exp_inertial_angle(i: *mut RawInertial) -> f64;
-
-        pub fn exp_smartdrive_new(
-            l: *mut RawMotor,
-            r: *mut RawMotor,
-            i: *mut RawInertial,
-        ) -> *mut RawSmartdrive;
-        pub fn exp_smartdrive_free(s: *mut RawSmartdrive);
-        pub fn exp_smartdrive_set_drive_velocity(s: *mut RawSmartdrive, velocity: f64);
-        pub fn exp_smartdrive_set_turn_velocity(s: *mut RawSmartdrive, velocity: f64);
-        pub fn exp_smartdrive_turn_to_heading(s: *mut RawSmartdrive, angle: f64);
-        pub fn exp_smartdrive_drive(s: *mut RawSmartdrive, dir: DriveDirection);
-        pub fn exp_smartdrive_turn(s: *mut RawSmartdrive, dir: TurnDirection);
-        pub fn exp_smartdrive_stop(s: *mut RawSmartdrive);
-
-        pub fn vexSystemExitRequest();
-    }
-}
+mod ffi;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
     let _ = flush();
-    unsafe { vexSystemExitRequest() };
+    unsafe {
+        exp_request_exit();
+    }
     loop {
         sleep(1000);
     }
@@ -105,6 +49,10 @@ pub fn _print(args: fmt::Arguments) {
 #[doc(hidden)]
 pub fn _format(args: fmt::Arguments) -> String {
     args.to_string()
+}
+
+pub fn get_time() -> u32 {
+    unsafe { exp_time() }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,6 +147,12 @@ impl Motor {
     pub fn new(port: u8, reverse: bool) -> Option<Self> {
         unsafe { Some(Self(NonNull::new(exp_motor_new(port, reverse))?)) }
     }
+
+    pub fn spin(&self, pct: f64) {
+        unsafe {
+            exp_motor_spin(self.0.as_ptr(), pct);
+        }
+    }
 }
 
 impl Drop for Motor {
@@ -239,6 +193,26 @@ impl Drop for Inertial {
     fn drop(&mut self) {
         unsafe {
             exp_inertial_free(self.0.as_ptr());
+        }
+    }
+}
+
+pub struct Distance(NonNull<RawDistance>);
+
+impl Distance {
+    pub fn new(port: u8) -> Option<Self> {
+        unsafe { Some(Self(NonNull::new(exp_distance_new(port))?)) }
+    }
+
+    pub fn object_distance_mm(&self) -> f64 {
+        unsafe { exp_distance_object_distance(self.0.as_ptr()) }
+    }
+}
+
+impl Drop for Distance {
+    fn drop(&mut self) {
+        unsafe {
+            exp_distance_free(self.0.as_ptr());
         }
     }
 }

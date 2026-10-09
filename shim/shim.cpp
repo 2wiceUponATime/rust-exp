@@ -41,13 +41,16 @@ enum class TurnDirection : uint8_t {
 };
 
 extern "C" {
-// Stdio
+// System
+uint32_t exp_time() { return vex::timer::system(); }
+
 void exp_printf(char *s) { printf("%s", s); }
 
 int exp_flush_stdout() { return fflush(stdout); }
 
-// Threads
 void exp_thread_sleep(uint32_t time) { this_thread::sleep_for(time); }
+
+void exp_request_exit() { vexSystemExitRequest(); }
 
 // Brain
 brain *exp_brain_new() { return new brain; }
@@ -71,6 +74,8 @@ motor *exp_motor_new(uint8_t port, bool reverse) {
 
 void exp_motor_free(motor *m) { delete m; }
 
+void exp_motor_spin(motor *m, double p) { m->spin(forward, p, percent); }
+
 // Inertial
 inertial *exp_inertial_new() { return new inertial(); }
 
@@ -89,6 +94,21 @@ void exp_inertial_calibrate(inertial *i) { i->calibrate(); }
 bool exp_inertial_is_calibrating(inertial *i) { return i->isCalibrating(); }
 
 double exp_inertial_angle(inertial *i) { return i->angle(degrees); }
+
+// Distance
+distance *exp_distance_new(uint8_t port) {
+  switch (port) {
+    PORT_CASES(distance);
+  default:
+    return 0;
+  }
+}
+
+void exp_distance_free(distance *d) { delete d; }
+
+double exp_distance_object_distance(distance *d) {
+  return d->objectDistance(mm);
+}
 
 // Smartdrive
 smartdrive *exp_smartdrive_new(motor *l, motor *r, inertial *i) {
@@ -117,7 +137,5 @@ void exp_smartdrive_turn(smartdrive *s, TurnDirection dir) {
   s->turn(dir == TurnDirection::Left ? left : right);
 }
 
-void exp_smartdrive_stop(smartdrive *s) {
-  s->stop();
-}
+void exp_smartdrive_stop(smartdrive *s) { s->stop(); }
 }

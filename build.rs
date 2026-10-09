@@ -1,3 +1,30 @@
+use std::{
+    fs::{self, OpenOptions},
+    io::Write,
+};
+
+use regex::Regex;
+
+fn to_rust_type(ty: &str) -> Result<Option<&str>, String> {
+    let ty = ty.trim();
+    Ok(Some(match ty {
+        "void" => return Ok(None),
+        "uint32_t" => "u32",
+        "uint8_t" => "u8",
+        "int" | "int32_t" => "i32",
+        "double" => "f64",
+        "bool" => "bool",
+        "char *" => "*const c_char",
+        "brain *" => "*mut RawBrain",
+        "motor *" => "*mut RawMotor",
+        "inertial *" => "*mut RawInertial",
+        "distance *" => "*mut RawDistance",
+        "smartdrive *" => "*mut RawSmartdrive",
+        "DriveDirection" | "TurnDirection" => ty,
+        _ => return Err(format!("Unknown type: {}", ty)),
+    }))
+}
+
 fn main() {
     let _ = dotenvy::dotenv();
 
@@ -39,4 +66,68 @@ fn main() {
         .flag(format!("-isystem{sdk}/gcc/include/c++/7.3.1/arm-none-eabi"))
         .file("shim/shim.cpp")
         .compile("shim");
+
+    let shim_src = fs::read_to_string("shim/shim.cpp").unwrap();
+    let re = Regex::new(r"([a-z0-9_]+ \*?)(exp_[a-z_]+)\((.*?)\)").unwrap();
+    let arg_re = Regex::new(r"([a-zA-Z0-9_]+ \*?)([a-z]+)").unwrap();
+    let mut out = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open("src/ffi.rs")
+        .unwrap();
+    write!(
+        out,
+        r#"use super::*;
+use core::{{
+    ffi::c_char,
+    marker::{{PhantomData, PhantomPinned}},
+        }};
+
+macro_rules! opaque {{
+    ($($name:ident),+ $(,)?) => {{
+        $(
+            #[repr(C)]
+            pub struct $name {{
+                _data: [u8; 0],
+                _marker: PhantomData<(*mut u8, PhantomPinned)>,
+            }}
+        )+
+    }};
+}}
+
+opaque!(RawBrain, RawMotor, RawInertial, RawDistance, RawSmartdrive);
+
+unsafe extern "C" {{
+"#
+    )
+    .unwrap();
+    for captures in re.captures_iter(&shim_src) {
+        write!(out, "    pub fn {}(", captures.get(2).unwrap().as_str()).unwrap();
+        let args: Vec<_> = captures.get(3).unwrap().as_str().split(',').collect();
+        for (i, arg) in args.iter().enumerate() {
+            if arg.is_empty() {
+                continue;
+            }
+            let captures = arg_re.captures(arg).unwrap();
+            write!(
+                out,
+                "{}: {}",
+                captures.get(2).unwrap().as_str(),
+                to_rust_type(captures.get(1).unwrap().as_str())
+                    .unwrap()
+                    .expect("Unexpected void")
+            )
+            .unwrap();
+            if i != args.len() - 1 {
+                write!(out, ", ").unwrap();
+            }
+        }
+        write!(out, ")").unwrap();
+        if let Some(t) = to_rust_type(captures.get(1).unwrap().as_str()).unwrap() {
+            write!(out, " -> {t}").unwrap();
+        }
+        write!(out, ";\n").unwrap();
+    }
+    write!(out, "}}\n").unwrap();
 }

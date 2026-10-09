@@ -20,13 +20,21 @@ case "$1" in
 build)
 	cargo build -r
 	arm-none-eabi-objcopy -O binary "$TARGET_DIR/$bin_name" "$TARGET_DIR/$bin_name.bin"
+  if [ "$2" = "upload" ]; then
+    shift 2
+    "$0" upload "$@"
+  fi
 	;;
 upload)
   shift
   "$VEXCOM_BIN" --write "$TARGET_DIR/$bin_name.bin" "$@"
   ;;
+fmt)
+  cargo fmt
+  clang-format -i shim/shim.cpp
+  ;;
 *)
-	echo "usage: $0 {build,upload}" >&2
+	echo "usage: $0 <build|upload|fmt>" >&2
 	exit 1
 	;;
 esac
