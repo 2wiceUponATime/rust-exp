@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+pastey = "0.2.3"
 
 [build-dependencies]
 cc = "1.5.1"

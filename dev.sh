@@ -29,12 +29,8 @@ upload)
   shift
   "$VEXCOM_BIN" --write "$TARGET_DIR/$bin_name.bin" "$@"
   ;;
-fmt)
-  cargo fmt
-  clang-format -i shim/shim.cpp
-  ;;
 *)
-	echo "usage: $0 <build|upload|fmt>" >&2
+	echo "usage: $0 <build|upload>" >&2
 	exit 1
 	;;
 esac

@@ -1,11 +1,12 @@
 use std::{
-    fs::{self, OpenOptions}, io::Write, process::Command,
+    fs::{self, OpenOptions},
+    io::Write,
+    process::Command,
 };
 
 use regex::Regex;
 
 fn to_rust_type(ty: &str) -> Result<&str, String> {
-    let ty = ty.trim();
     Ok(match ty {
         "void" => "()",
         "uint32_t" => "u32",
@@ -13,12 +14,13 @@ fn to_rust_type(ty: &str) -> Result<&str, String> {
         "int" | "int32_t" => "i32",
         "double" => "f64",
         "bool" => "bool",
-        "char *" => "*const c_char",
-        "brain *" => "*mut RawBrain",
-        "motor *" => "*mut RawMotor",
-        "inertial *" => "*mut RawInertial",
-        "distance *" => "*mut RawDistance",
-        "smartdrive *" => "*mut RawSmartdrive",
+        "char*" => "*const c_char",
+        "drivetrain*" => "*mut RawDrivetrain",
+        "brain*" => "*mut RawBrain",
+        "motor*" => "*mut RawMotor",
+        "inertial*" => "*mut RawInertial",
+        "distance*" => "*mut RawDistance",
+        "smartdrive*" => "*mut RawSmartdrive",
         "DriveDirection" | "TurnDirection" => ty,
         _ => return Err(format!("Unknown type: {}", ty)),
     })
@@ -67,8 +69,8 @@ fn main() {
         .compile("shim");
 
     let shim_src = fs::read_to_string("shim/shim.cpp").unwrap();
-    let re = Regex::new(r"([a-z0-9_]+ \*?)(exp_[a-z_]+)\((.*?)\)").unwrap();
-    let arg_re = Regex::new(r"([a-zA-Z0-9_]+ \*?)([a-z]+)").unwrap();
+    let re = Regex::new(r"([a-z0-9_]+\*?) (exp_[a-z_]+)\(([\s\S]*?)\)").unwrap();
+    let arg_re = Regex::new(r"([a-zA-Z0-9_]+\*?) ([a-z_]+)").unwrap();
     let mut out = OpenOptions::new()
         .write(true)
         .truncate(true)
@@ -81,7 +83,7 @@ fn main() {
 use core::{{
     ffi::c_char,
     marker::{{PhantomData, PhantomPinned}},
-        }};
+    }};
 
 macro_rules! opaque {{
     ($($name:ident),+ $(,)?) => {{
@@ -95,9 +97,17 @@ macro_rules! opaque {{
     }};
 }}
 
-opaque!(RawBrain, RawMotor, RawInertial, RawDistance, RawSmartdrive);
+opaque!(
+    RawDrivetrain,
+    RawSmartdrive,
+    RawMotor,
+    RawBrain,
+    RawInertial,
+    RawDistance
+);
 
-unsafe extern "C" {{"#)
+pub unsafe extern "C" {{"#
+    )
     .unwrap();
     for captures in re.captures_iter(&shim_src) {
         write!(out, "pub fn {}(", captures.get(2).unwrap().as_str()).unwrap();
@@ -129,9 +139,6 @@ unsafe extern "C" {{"#)
     }
     write!(out, "}}").unwrap();
 
-    let status = Command::new("rustfmt")
-        .arg("src/ffi.rs")
-        .status()
-        .unwrap();
+    let status = Command::new("rustfmt").arg("src/ffi.rs").status().unwrap();
     assert!(status.success(), "rustfmt failed");
 }
