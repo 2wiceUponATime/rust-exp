@@ -14,14 +14,17 @@ fn to_rust_type(ty: &str) -> Result<&str, String> {
         "int" | "int32_t" => "i32",
         "double" => "f64",
         "bool" => "bool",
+        "size_t" => "usize",
         "char*" => "*const c_char",
         "drivetrain*" => "*mut RawDrivetrain",
         "brain*" => "*mut RawBrain",
         "motor*" => "*mut RawMotor",
+        "motor**" => "*const *mut RawMotor",
+        "motor_group*" => "*mut RawMotorGroup",
         "inertial*" => "*mut RawInertial",
         "distance*" => "*mut RawDistance",
         "smartdrive*" => "*mut RawSmartdrive",
-        "DriveDirection" | "TurnDirection" => ty,
+        "Direction" | "TurnDirection" | "BrakeType" | "VelocityUnits" => ty,
         _ => return Err(format!("Unknown type: {}", ty)),
     })
 }
@@ -69,8 +72,8 @@ fn main() {
         .compile("shim");
 
     let shim_src = fs::read_to_string("shim/shim.cpp").unwrap();
-    let re = Regex::new(r"([a-z0-9_]+\*?) (exp_[a-z_]+)\(([\s\S]*?)\)").unwrap();
-    let arg_re = Regex::new(r"([a-zA-Z0-9_]+\*?) ([a-z_]+)").unwrap();
+    let re = Regex::new(r"([a-zA-Z0-9_]+\**) (exp_[a-z_]+)\(([\s\S]*?)\)").unwrap();
+    let arg_re = Regex::new(r"([a-zA-Z0-9_]+\**) ([a-z_]+)").unwrap();
     let mut out = OpenOptions::new()
         .write(true)
         .truncate(true)
@@ -101,6 +104,7 @@ opaque!(
     RawDrivetrain,
     RawSmartdrive,
     RawMotor,
+    RawMotorGroup,
     RawBrain,
     RawInertial,
     RawDistance
@@ -135,7 +139,7 @@ pub unsafe extern "C" {{"#
             to_rust_type(captures.get(1).unwrap().as_str()).unwrap()
         )
         .unwrap();
-        write!(out, ";").unwrap();
+        writeln!(out, ";").unwrap();
     }
     write!(out, "}}").unwrap();
 
