@@ -1,7 +1,5 @@
 #include <stdio.h>
 
-#include <utility>
-
 #include "exp_cpp.h"
 
 #define PORT_CASE(i, c, ...) \
@@ -392,8 +390,7 @@ bool exp_motor_spin_for_time_velocity(
   Direction dir,
   double time,
   double velocity,
-  VelocityUnits units,
-  bool wait
+  VelocityUnits units
 ) {
   return m->spinFor(from_dir(dir), time, msec, velocity, from_vel(units));
 }
@@ -540,8 +537,7 @@ void exp_motor_group_spin_for_time_velocity(
   Direction dir,
   double time,
   double velocity,
-  VelocityUnits units,
-  bool wait
+  VelocityUnits units
 ) {
   m->spinFor(from_dir(dir), time, msec, velocity, from_vel(units));
 }

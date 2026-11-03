@@ -14,6 +14,7 @@ prettyplease = "0.3.0"
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
 regex = "1.13.1"
+serde_json = "1.0.154"
 syn = "3.0.9"
 
 [lib]

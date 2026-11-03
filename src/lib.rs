@@ -501,13 +501,7 @@ impl Motor {
         unsafe { exp_motor_spin_for_time(self.0.as_ptr(), dir, time.ms()) }
     }
 
-    pub fn spin_for_time_velocity(
-        &self,
-        dir: Direction,
-        time: Time,
-        velocity: Velocity,
-        wait: bool,
-    ) -> bool {
+    pub fn spin_for_time_velocity(&self, dir: Direction, time: Time, velocity: Velocity) -> bool {
         unsafe {
             exp_motor_spin_for_time_velocity(
                 self.0.as_ptr(),
@@ -515,7 +509,6 @@ impl Motor {
                 time.ms(),
                 velocity.value(),
                 velocity.units(),
-                wait,
             )
         }
     }
@@ -728,13 +721,7 @@ impl<'a> MotorGroup<'a> {
         }
     }
 
-    pub fn spin_for_time_velocity(
-        &self,
-        dir: Direction,
-        time: Time,
-        velocity: Velocity,
-        wait: bool,
-    ) {
+    pub fn spin_for_time_velocity(&self, dir: Direction, time: Time, velocity: Velocity) {
         unsafe {
             exp_motor_group_spin_for_time_velocity(
                 self.raw.as_ptr(),
@@ -742,7 +729,6 @@ impl<'a> MotorGroup<'a> {
                 time.ms(),
                 velocity.value(),
                 velocity.units(),
-                wait,
             );
         }
     }

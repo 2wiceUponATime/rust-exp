@@ -4,6 +4,8 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use regex::Regex;
 
+const SHIM_FILE: &str = "shim/shim.cpp";
+
 fn to_rust_type(ty: &str) -> Result<TokenStream, String> {
     Ok(match ty {
         "void" => quote! { () },
@@ -34,29 +36,53 @@ fn env(key: &str) -> String {
     std::env::var(key).unwrap_or_else(|e| panic!("failed to read env var {key}: {e}"))
 }
 
+fn write_compile_commands(build: &cc::Build, file: &str) {
+    let root = env("CARGO_MANIFEST_DIR");
+    let tool = build.get_compiler();
+
+    let mut arguments = vec![tool.path().to_string_lossy().into_owned()];
+    arguments.extend(
+        tool.args()
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned()),
+    );
+    arguments.extend(["--target=arm-none-eabi", "-nostdlibinc", "-c", file].map(String::from));
+
+    let db = serde_json::json!([{
+        "directory": root,
+        "file": file,
+        "arguments": arguments,
+    }]);
+    fs::write(
+        format!("{root}/compile_commands.json"),
+        serde_json::to_string_pretty(&db).unwrap(),
+    )
+    .unwrap();
+}
+
 fn main() {
     let _ = dotenvy::dotenv();
 
-    println!("cargo:rerun-if-changed=.env");
-    println!("cargo:rerun-if-env-changed=VEX_SDK_PATH");
-    println!("cargo:rerun-if-env-changed=VEX_TOOLS_PATH");
+    println!("cargo::rerun-if-changed=.env");
+    println!("cargo::rerun-if-env-changed=VEX_SDK_PATH");
 
     let sdk = env("VEX_SDK_PATH");
     let out_dir = PathBuf::from(env("OUT_DIR"));
 
     println!("cargo::warning={sdk}");
 
-    println!("cargo:rustc-link-arg=-T{sdk}/lscript.ld");
-    println!("cargo:rustc-link-arg=--no-warn-rwx-segments");
-    println!("cargo:rustc-link-search=native={sdk}");
-    println!("cargo:rustc-link-search=native={sdk}/gcc/libs");
+    println!("cargo::rustc-link-arg=-T{sdk}/lscript.ld");
+    println!("cargo::rustc-link-arg=--no-warn-rwx-segments");
+    println!("cargo::rustc-link-search=native={sdk}");
+    println!("cargo::rustc-link-search=native={sdk}/gcc/libs");
     for lib in ["exprt", "c_nano", "stdc++_nano", "m", "gcc"] {
-        println!("cargo:rustc-link-lib=static={lib}");
+        println!("cargo::rustc-link-lib=static={lib}");
     }
 
-    println!("cargo:rerun-if-changed=shim/shim.cpp");
+    println!("cargo::rerun-if-changed={SHIM_FILE}");
 
-    cc::Build::new()
+    let mut build = cc::Build::new();
+    build
         .cpp(true)
         .cpp_link_stdlib(None)
         .std("gnu++17")
@@ -70,16 +96,21 @@ fn main() {
             "-U__INT32_TYPE__",
             "-U__UINT32_TYPE__",
         ])
+        .flags(
+            [
+                "include",
+                "gcc/include",
+                "gcc/include/c++/7.3.1",
+                "gcc/include/c++/7.3.1/arm-none-eabi",
+            ]
+            .map(|dir| format!("-isystem{sdk}/{dir}")),
+        )
         .define("__INT32_TYPE__", "long")
         .define("__UINT32_TYPE__", "unsigned long")
-        .flag(format!("-isystem{sdk}/include"))
-        .flag(format!("-isystem{sdk}/gcc/include"))
-        .flag(format!("-isystem{sdk}/gcc/include/c++/7.3.1"))
-        .flag(format!("-isystem{sdk}/gcc/include/c++/7.3.1/arm-none-eabi"))
-        .file("shim/shim.cpp")
-        .compile("shim");
+        .file(SHIM_FILE);
+    write_compile_commands(&build, SHIM_FILE);
 
-    let shim_src = fs::read_to_string("shim/shim.cpp").unwrap();
+    let shim_src = fs::read_to_string(SHIM_FILE).unwrap();
     let re = Regex::new(r"([a-zA-Z0-9_]+\**) (exp_[a-z_]+)\(([\s\S]*?)\)").unwrap();
     let arg_re = Regex::new(r"([a-zA-Z0-9_]+\**) ([a-z_]+)").unwrap();
     let decls = re.captures_iter(&shim_src).map(|captures| {
@@ -96,6 +127,7 @@ fn main() {
             pub fn #name(#(#args),*) -> #ret;
         }
     });
+
     let tokens = quote! {
         use super::*;
         use core::{
@@ -129,7 +161,9 @@ fn main() {
             #(#decls)*
         }
     };
+
     let file = syn::parse2(tokens).unwrap();
     std::fs::write(out_dir.join("ffi.rs"), prettyplease::unparse(&file)).unwrap();
-    return;
+
+    build.compile("shim");
 }
