@@ -69,8 +69,6 @@ fn main() {
     let sdk = env("VEX_SDK_PATH");
     let out_dir = PathBuf::from(env("OUT_DIR"));
 
-    println!("cargo::warning={sdk}");
-
     println!("cargo::rustc-link-arg=-T{sdk}/lscript.ld");
     println!("cargo::rustc-link-arg=--no-warn-rwx-segments");
     println!("cargo::rustc-link-search=native={sdk}");
