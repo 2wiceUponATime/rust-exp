@@ -1,32 +1,37 @@
-use std::{
-    fs::{self, OpenOptions},
-    io::Write,
-    process::Command,
-};
+use std::{fs, path::PathBuf};
 
+use proc_macro2::TokenStream;
+use quote::{format_ident, quote};
 use regex::Regex;
 
-fn to_rust_type(ty: &str) -> Result<&str, String> {
+fn to_rust_type(ty: &str) -> Result<TokenStream, String> {
     Ok(match ty {
-        "void" => "()",
-        "uint32_t" => "u32",
-        "uint8_t" => "u8",
-        "int" | "int32_t" => "i32",
-        "double" => "f64",
-        "bool" => "bool",
-        "size_t" => "usize",
-        "char*" => "*const c_char",
-        "drivetrain*" => "*mut RawDrivetrain",
-        "brain*" => "*mut RawBrain",
-        "motor*" => "*mut RawMotor",
-        "motor**" => "*const *mut RawMotor",
-        "motor_group*" => "*mut RawMotorGroup",
-        "inertial*" => "*mut RawInertial",
-        "distance*" => "*mut RawDistance",
-        "smartdrive*" => "*mut RawSmartdrive",
-        "Direction" | "TurnDirection" | "BrakeType" | "VelocityUnits" => ty,
+        "void" => quote! { () },
+        "uint32_t" => quote! { u32 },
+        "uint8_t" => quote! { u8 },
+        "int" | "int32_t" => quote! { i32 },
+        "double" => quote! { f64 },
+        "bool" => quote! { bool },
+        "size_t" => quote! { usize },
+        "char*" => quote! { *const c_char },
+        "drivetrain*" => quote! { *mut RawDrivetrain },
+        "brain*" => quote! { *mut RawBrain },
+        "motor*" => quote! { *mut RawMotor },
+        "motor**" => quote! { *const *mut RawMotor },
+        "motor_group*" => quote! { *mut RawMotorGroup },
+        "inertial*" => quote! { *mut RawInertial },
+        "distance*" => quote! { *mut RawDistance },
+        "smartdrive*" => quote! { *mut RawSmartdrive },
+        "Direction" => quote! { Direction },
+        "TurnDirection" => quote! { TurnDirection },
+        "BrakeType" => quote! { BrakeType },
+        "VelocityUnits" => quote! { VelocityUnits },
         _ => return Err(format!("Unknown type: {}", ty)),
     })
+}
+
+fn env(key: &str) -> String {
+    std::env::var(key).unwrap_or_else(|e| panic!("failed to read env var {key}: {e}"))
 }
 
 fn main() {
@@ -36,7 +41,10 @@ fn main() {
     println!("cargo:rerun-if-env-changed=VEX_SDK_PATH");
     println!("cargo:rerun-if-env-changed=VEX_TOOLS_PATH");
 
-    let sdk = std::env::var("VEX_SDK_PATH").expect("missing VEX_SDK_PATH");
+    let sdk = env("VEX_SDK_PATH");
+    let out_dir = PathBuf::from(env("OUT_DIR"));
+
+    println!("cargo::warning={sdk}");
 
     println!("cargo:rustc-link-arg=-T{sdk}/lscript.ld");
     println!("cargo:rustc-link-arg=--no-warn-rwx-segments");
@@ -74,75 +82,54 @@ fn main() {
     let shim_src = fs::read_to_string("shim/shim.cpp").unwrap();
     let re = Regex::new(r"([a-zA-Z0-9_]+\**) (exp_[a-z_]+)\(([\s\S]*?)\)").unwrap();
     let arg_re = Regex::new(r"([a-zA-Z0-9_]+\**) ([a-z_]+)").unwrap();
-    let mut out = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .create(true)
-        .open("src/ffi.rs")
-        .unwrap();
-    write!(
-        out,
-        r#"use super::*;
-use core::{{
-    ffi::c_char,
-    marker::{{PhantomData, PhantomPinned}},
-    }};
-
-macro_rules! opaque {{
-    ($($name:ident),+ $(,)?) => {{
-        $(
-            #[repr(C)]
-            pub struct $name {{
-                _data: [u8; 0],
-                _marker: PhantomData<(*mut u8, PhantomPinned)>,
-            }}
-        )+
-    }};
-}}
-
-opaque!(
-    RawDrivetrain,
-    RawSmartdrive,
-    RawMotor,
-    RawMotorGroup,
-    RawBrain,
-    RawInertial,
-    RawDistance
-);
-
-pub unsafe extern "C" {{"#
-    )
-    .unwrap();
-    for captures in re.captures_iter(&shim_src) {
-        write!(out, "pub fn {}(", captures.get(2).unwrap().as_str()).unwrap();
-        let args: Vec<_> = captures.get(3).unwrap().as_str().split(',').collect();
-        for (i, arg) in args.iter().enumerate() {
-            if arg.is_empty() {
-                continue;
-            }
-            let captures = arg_re.captures(arg).unwrap();
-            write!(
-                out,
-                "{}:{}",
-                captures.get(2).unwrap().as_str(),
-                to_rust_type(captures.get(1).unwrap().as_str()).unwrap()
-            )
-            .unwrap();
-            if i != args.len() - 1 {
-                write!(out, ",").unwrap();
-            }
+    let decls = re.captures_iter(&shim_src).map(|captures| {
+        let arg_strings: Vec<&str> = captures.get(3).unwrap().as_str().split(',').collect();
+        let args = arg_strings.iter().filter_map(|arg| {
+            let captures = arg_re.captures(arg)?;
+            let arg = format_ident!("{}", &captures[2]);
+            let ty = to_rust_type(&captures[1]).unwrap();
+            Some(quote! { #arg: #ty })
+        });
+        let name = format_ident!("{}", &captures[2]);
+        let ret = to_rust_type(&captures[1]).unwrap();
+        quote! {
+            pub fn #name(#(#args),*) -> #ret;
         }
-        write!(out, ")").unwrap();
-        write!(
-            out,
-            "->{}",
-            to_rust_type(captures.get(1).unwrap().as_str()).unwrap()
-        )
-        .unwrap();
-        writeln!(out, ";").unwrap();
-    }
-    write!(out, "}}").unwrap();
+    });
+    let tokens = quote! {
+        use super::*;
+        use core::{
+            ffi::c_char,
+            marker::{PhantomData, PhantomPinned},
+        };
 
-    let status = Command::new("rustfmt").arg("src/ffi.rs").status().unwrap();
-    assert!(status.success(), "rustfmt failed");
+        macro_rules! opaque {
+            ($($name:ident),+ $(,)?) => {
+                $(
+                    #[repr(C)]
+                    pub struct $name {
+                        _data: [u8; 0],
+                        _marker: PhantomData<(*mut u8, PhantomPinned)>,
+                    }
+                )+
+            };
+        }
+
+        opaque!(
+            RawDrivetrain,
+            RawSmartdrive,
+            RawMotor,
+            RawMotorGroup,
+            RawBrain,
+            RawInertial,
+            RawDistance
+        );
+
+        unsafe extern "C" {
+            #(#decls)*
+        }
+    };
+    let file = syn::parse2(tokens).unwrap();
+    std::fs::write(out_dir.join("ffi.rs"), prettyplease::unparse(&file)).unwrap();
+    return;
 }

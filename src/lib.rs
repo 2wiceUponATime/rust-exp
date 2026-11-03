@@ -20,7 +20,9 @@ use units::*;
 pub mod units;
 
 mod allocator;
-mod ffi;
+mod ffi {
+    include!(concat!(env!("OUT_DIR"), "/ffi.rs"));
+}
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {

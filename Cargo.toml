@@ -10,7 +10,11 @@ pastey = "0.2.3"
 [build-dependencies]
 cc = "1.5.1"
 dotenvy = "0.15.7"
+prettyplease = "0.3.0"
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
 regex = "1.13.1"
+syn = "3.0.9"
 
 [lib]
 test = false
