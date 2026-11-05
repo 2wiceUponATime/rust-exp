@@ -5,7 +5,7 @@ fn main() {
         .cpp(include_str!("shim/prelude.cpp"))
         .build()
     {
-        panic!("{e} / {e:?}");
+        panic!("{e}");
     }
 
     return;

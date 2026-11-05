@@ -54,7 +54,7 @@ macro_rules! opaque {
     };
 }
 
-opaque!(RawBrain, RawLcd);
+opaque!(RawBrain, RawBrainButton, RawBrainLcd);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -88,14 +88,14 @@ impl Brain {
     }
 
     #[cpp(body = "return &self->Screen;")]
-    fn lcd_ptr(&self) -> *mut RawLcd;
+    fn lcd_ptr(&self) -> *mut RawBrainLcd;
 
     #[cpp(body = "delete self;")]
     fn free(&self);
 
-    pub fn lcd<'a>(&'a self) -> Lcd<'a> {
+    pub fn lcd<'a>(&'a self) -> BrainLcd<'a> {
         // SAFETY: every non-null `brain` has a non-null address for its `Screen`
-        Lcd(never_null(self.lcd_ptr()), PhantomData)
+        BrainLcd(never_null(self.lcd_ptr()), PhantomData)
     }
 }
 
@@ -105,9 +105,49 @@ impl Drop for Brain {
     }
 }
 
-pub struct Lcd<'a>(NonNull<RawLcd>, PhantomData<&'a Brain>);
+pub struct BrainButton(NonNull<RawBrainButton>);
 
-impl Lcd<'_> {
+impl BrainButton {
+    #[cpp(func = "new brain::button")]
+    fn new_ptr(id: i32) -> *mut RawBrainButton;
+
+    #[cpp(body = "delete self;")]
+    fn free(&self);
+
+    pub fn new(id: i32) -> Self {
+        Self(never_null(Self::new_ptr(id)))
+    }
+
+    pub fn up() -> Self {
+        Self::new(0)
+    }
+
+    pub fn down() -> Self {
+        Self::new(1)
+    }
+
+    pub fn check() -> Self {
+        Self::new(2)
+    }
+
+    pub fn pressing(&self) -> bool;
+
+    #[cpp(func = "pressed")]
+    pub fn on_press(&self, callback: extern "C" fn());
+
+    #[cpp(func = "released")]
+    pub fn on_release(&self, callback: extern "C" fn());
+}
+
+impl Drop for BrainButton {
+    fn drop(&mut self) {
+        self.free();
+    }
+}
+
+pub struct BrainLcd<'a>(NonNull<RawBrainLcd>, PhantomData<&'a Brain>);
+
+impl BrainLcd<'_> {
     #[cpp(func = "clearScreen")]
     pub fn clear(&self);
 }

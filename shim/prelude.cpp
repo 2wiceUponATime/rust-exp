@@ -5,6 +5,9 @@
 using namespace vex;
 
 namespace {
+template <typename F>
+using fn_ptr = F*;
+
 enum class VelocityUnits : uint8_t {
   Percent = 0,
   Rpm = 1,

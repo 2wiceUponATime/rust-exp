@@ -106,8 +106,10 @@ struct CurrentImpl {
 impl CurrentImpl {
     fn to_cpp(&self) -> String {
         let struct_name = self.struct_name.to_string();
-        if struct_name == "Lcd" {
-            return "brain::lcd".to_owned();
+        match struct_name.as_str() {
+            "BrainLcd" => return "brain::lcd".to_owned(),
+            "BrainButton" => return "brain::button".to_owned(),
+            _ => {}
         }
         struct_name.to_case(Case::Camel)
     }
@@ -151,15 +153,37 @@ impl FfiTy {
                     BrakeType => BrakeType,
                     VelocityUnits => VelocityUnits,
                     RawBrain => brain,
-                    RawLcd => "brain::lcd",
+                    RawBrainLcd => "brain::lcd",
+                    RawBrainButton => "brain::button",
                 });
+            }
+            Type::FnPtr(f) => {
+                out.push_str("fn_ptr<");
+                match &f.output {
+                    ReturnType::Type(_, ty) => Self::ty_to_cpp(ty, out, current)?,
+                    ReturnType::Default => {
+                        out.push_str("void");
+                    }
+                }
+                out.push_str("(");
+                if f.inputs.is_empty() {
+                    out.push_str("void");
+                }
+                for (i, arg) in f.inputs.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    Self::ty_to_cpp(&arg.ty, out, current)?;
+                }
+                out.push_str(")>");
+                return Ok(());
             }
             Type::Ptr(TypePtr { elem, .. }) => {
                 Self::ty_to_cpp(elem, out, current)?;
                 out.push('*');
                 return Ok(());
             }
-            _ => todo!(),
+            _ => {}
         };
         Err(Error::CannotConvertToCppType(ty.clone()))
     }
@@ -361,7 +385,7 @@ impl Builder {
         };
         let name = &decl.sig.ident;
         let ffi_name = format_ident!("shim_{prefix}{name}");
-        let inputs = &decl.sig.inputs;
+        // let inputs = &decl.sig.inputs;
         let output = &decl.sig.output;
         let mut is_method = false;
         let lowered_inputs = decl
@@ -397,10 +421,10 @@ impl Builder {
         } else {
             (TokenStream::new(), TokenStream::new())
         };
-        let out = &decl.sig.output;
+        let sig = &decl.sig;
         self.push(quote! {
             #(#rest)*
-            #vis fn #name(#inputs) #out {
+            #vis #sig {
                 unsafe { #ffi_name(#self_arg #(#lowered_args),*) }
             }
         });
@@ -527,6 +551,14 @@ impl Builder {
         )?;
 
         let sdk = env("VEX_SDK_PATH");
+
+        println!("cargo::rustc-link-arg=-T{sdk}/lscript.ld");
+        println!("cargo::rustc-link-arg=--no-warn-rwx-segments");
+        println!("cargo::rustc-link-search=native={sdk}");
+        println!("cargo::rustc-link-search=native={sdk}/gcc/libs");
+        for lib in ["exprt", "c_nano", "stdc++_nano", "m", "gcc"] {
+            println!("cargo::rustc-link-lib=static={lib}");
+        }
 
         let mut build = cc::Build::new();
         build
