@@ -1,0 +1,3 @@
+Diagnostics:
+  Suppress: ['-Wunused-function']
+  UnusedIncludes: None

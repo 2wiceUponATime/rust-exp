@@ -1,0 +1,18 @@
+[package]
+name = "rust-exp-build"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cc = "1.11.0"
+convert_case = "0.12.0"
+indoc = "2.0.8"
+itertools = "0.15.0"
+prettyplease = "0.3.0"
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
+serde_json = "1.0.154"
+syn = { version = "3.0.9", features = ["extra-traits"] }
+thiserror = "2.0.21"
+
+[workspace]
