@@ -1,14 +1,16 @@
 #![no_std]
 
+#[cfg(rust_analyzer)]
+#[path = "../bindings.rs"]
+mod bindings_src;
+
 extern crate alloc;
 mod allocator;
 
-use core::{
-    marker::{PhantomData, PhantomPinned},
-    panic::PanicInfo,
-};
+use core::panic::PanicInfo;
 
 pub use generated::*;
+pub mod units;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {

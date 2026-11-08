@@ -5,8 +5,6 @@ use core::{
 
 use pastey::paste;
 
-use crate::VelocityUnits;
-
 pub const MM_PER_INCH: f64 = 25.4;
 pub const DEG_PER_RAD: f64 = 180.0 / PI;
 
@@ -66,8 +64,20 @@ macro_rules! impl_number {
 
 number_types!(impl_number);
 
+macro_rules! impl_debug {
+    ($ty:ident, $fmt:literal, $method:ident) => {
+        impl core::fmt::Debug for $ty {
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                write!(f, concat!(stringify!($ty), "(", $fmt, ")"), self.$method())
+            }
+        }
+    };
+}
+
 #[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub struct Time(f64);
+
+impl_debug!(Time, "{} s", sec);
 
 impl Time {
     pub fn ms(self) -> f64 {
@@ -82,6 +92,8 @@ impl Time {
 #[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub struct Distance(f64);
 
+impl_debug!(Distance, "{} mm", mm);
+
 impl Distance {
     pub fn mm(self) -> f64 {
         self.0
@@ -95,6 +107,8 @@ impl Distance {
 #[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub struct Angle(f64);
 
+impl_debug!(Angle, "{} deg", deg);
+
 impl Angle {
     pub fn deg(self) -> f64 {
         self.0
@@ -105,7 +119,13 @@ impl Angle {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VelocityUnits {
+    Percent = 0,
+    Rpm,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Velocity(f64, VelocityUnits);
 
 impl Velocity {
@@ -125,6 +145,8 @@ impl Velocity {
 #[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub struct Voltage(f64);
 
+impl_debug!(Voltage, "{} V", volts);
+
 impl Voltage {
     pub fn volts(self) -> f64 {
         self.0
@@ -138,6 +160,8 @@ impl Voltage {
 #[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub struct Torque(f64);
 
+impl_debug!(Torque, "{} Nm", newton_meters);
+
 impl Torque {
     pub fn newton_meters(self) -> f64 {
         self.0
@@ -146,6 +170,8 @@ impl Torque {
 
 #[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub struct Current(f64);
+
+impl_debug!(Current, "{} A", amps);
 
 impl Current {
     pub fn amps(self) -> f64 {
@@ -156,6 +182,8 @@ impl Current {
 #[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub struct Power(f64);
 
+impl_debug!(Power, "{} W", watts);
+
 impl Power {
     pub fn watts(self) -> f64 {
         self.0
@@ -164,6 +192,8 @@ impl Power {
 
 #[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub struct Temperature(f64);
+
+impl_debug!(Temperature, "{} C", celsius);
 
 impl Temperature {
     pub fn celsius(self) -> f64 {

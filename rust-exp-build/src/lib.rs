@@ -35,9 +35,9 @@ macro_rules! match_ident {
 }
 
 macro_rules! idents_to_cpp {
-    ($path:expr, $out:expr, { $($rust:ident => $cpp:tt),+ $(,)? }) => {
+    ($path:expr, $out:expr, { $($($rust:ident)|* => $cpp:tt),+ $(,)? }) => {
         match_ident!($path, {
-            $($rust => {
+            $($($rust)|* => {
                 $out.push_str(idents_to_cpp!(@cpp $cpp));
                 return Ok(());
             }),+
@@ -65,12 +65,6 @@ pub enum Error {
     Io(io::Error),
     #[error("{0}")]
     Syn(syn::Error),
-    #[error("unexpected item: {0:?}")]
-    UnexpectedItem(Item),
-    #[error("unexpected item: {:?}", .0.to_token_stream().to_string())]
-    UnexpectedImplItem(ImplItem),
-    #[error("unexpected type in impl: {}", .0.to_token_stream().to_string())]
-    UnexpectedSelfTy(Type),
     #[error("found multiple #[cpp(...)] attributes")]
     MultipleCppAttrs,
     #[error("unable to convert to C++ type: {:?}", .0.to_token_stream().to_string())]
@@ -107,8 +101,9 @@ impl CurrentImpl {
     fn to_cpp(&self) -> String {
         let struct_name = self.struct_name.to_string();
         match struct_name.as_str() {
-            "BrainLcd" => return "brain::lcd".to_owned(),
+            "BrainBattery" => return "brain::battery".to_owned(),
             "BrainButton" => return "brain::button".to_owned(),
+            "BrainLcd" => return "brain::lcd".to_owned(),
             _ => {}
         }
         struct_name.to_case(Case::Camel)
@@ -128,6 +123,10 @@ impl FfiTy {
     fn ty_to_cpp(ty: &Type, out: &mut String, current: &Option<CurrentImpl>) -> Result<(), Error> {
         match ty {
             Type::Paren(TypeParen { elem, .. }) => return Self::ty_to_cpp(elem, out, current),
+            Type::Tuple(t) if t.elems.len() == 0 => {
+                out.push_str("void");
+                return Ok(());
+            }
             Type::Path(TypePath { path, .. }) => {
                 if path.is_ident("Self")
                     && let Some(impl_) = current
@@ -148,13 +147,16 @@ impl FfiTy {
                     f32 => float,
                     f64 => double,
                     bool => bool,
-                    Direction => Direction,
-                    TurnDirection => TurnDirection,
                     BrakeType => BrakeType,
+                    Direction => Direction,
+                    FontType => FontType,
+                    TurnDirection => TurnDirection,
                     VelocityUnits => VelocityUnits,
+                    Color => Color,
                     RawBrain => brain,
-                    RawBrainLcd => "brain::lcd",
+                    RawBrainBattery => "brain::battery",
                     RawBrainButton => "brain::button",
+                    RawBrainLcd => "brain::lcd",
                 });
             }
             Type::FnPtr(f) => {
@@ -201,13 +203,12 @@ impl FfiTy {
             }
         })
     }
-
-    pub fn map_cpp_in(&self, arg: String) -> String {
+    fn map_cpp(&self, arg: String, dir: &str) -> String {
         match self {
-            Self::VelocityUnits => return format!("to_vex_enum({arg})"),
+            Self::VelocityUnits => return format!("{dir}_vex({arg})"),
             Self::Passthrough(ty) if let Type::Path(TypePath { path, .. }) = ty => {
                 match_ident!(path, {
-                    VelocityUnits => return format!("to_vex_enum({arg})"),
+                    FontType | Color => return format!("{dir}_vex({arg})"),
                 })
             }
             _ => {}
@@ -215,17 +216,12 @@ impl FfiTy {
         arg
     }
 
+    pub fn map_cpp_in(&self, arg: String) -> String {
+        self.map_cpp(arg, "to")
+    }
+
     pub fn map_cpp_out(&self, arg: String) -> String {
-        match self {
-            Self::VelocityUnits => return format!("return from_vex_enum({arg});"),
-            Self::Passthrough(ty) if let Type::Path(TypePath { path, .. }) = ty => {
-                match_ident!(path, {
-                    VelocityUnits => return format!("return from_vex_enum({arg});"),
-                })
-            }
-            _ => {}
-        }
-        format!("return {arg};")
+        self.map_cpp(arg, "from")
     }
 }
 
@@ -417,7 +413,7 @@ impl Builder {
         let (self_param, self_arg) = if is_method {
             let struct_name =
                 format_ident!("Raw{}", self.current_impl.as_ref().unwrap().struct_name);
-            (quote!(self_: *mut #struct_name,), quote!(self.0.as_ptr(),))
+            (quote!(self_: *mut #struct_name,), quote!(self.as_ptr(),))
         } else {
             (TokenStream::new(), TokenStream::new())
         };
@@ -435,6 +431,7 @@ impl Builder {
             ReturnType::Default => FfiTy::Unit,
             ReturnType::Type(_, ty) => FfiTy::Passthrough(*ty.clone()),
         };
+        let ret = output.as_cpp(&self.current_impl)?;
         let mut params = lowered_tys
             .iter()
             .zip(&lowered_params)
@@ -453,7 +450,9 @@ impl Builder {
         let body = attrs.body_override.unwrap_or_else(|| {
             let func = format!(
                 "{func_prefix}{}",
-                attrs.func_override.unwrap_or_else(|| name.to_string()),
+                attrs
+                    .func_override
+                    .unwrap_or_else(|| name.to_string().to_case(Case::Camel)),
             );
             let args = lowered_tys
                 .iter()
@@ -461,7 +460,11 @@ impl Builder {
                 .map(|(t, p)| t.map_cpp_in(p.to_string()))
                 .collect::<Vec<_>>()
                 .join(", ");
-            output.map_cpp_out(format!("{func}({args})"))
+            format!(
+                "{}{};",
+                if ret == "void" { "" } else { "return " },
+                output.map_cpp_out(format!("{func}({args})"))
+            )
         });
         write!(
             self.cpp,
@@ -469,9 +472,8 @@ impl Builder {
             formatdoc! {"
                 {ret} {ffi_name}({params}) {{
                     {body}
-                }}\n",
-                ret = output.as_cpp(&self.current_impl)?,
-            }
+                }}
+            "}
         )?;
         Ok(())
     }
@@ -483,7 +485,10 @@ impl Builder {
                 Ok(())
             }
             ImplItem::Verbatim(tokens) => self.build_verbatim(tokens),
-            _ => Err(Error::UnexpectedImplItem(item)),
+            _ => {
+                self.push(item.into_token_stream());
+                Ok(())
+            }
         }
     }
 
@@ -494,7 +499,10 @@ impl Builder {
                 let self_ty = impl_.self_ty.as_ref();
                 let segments = match self_ty {
                     Type::Path(path) => &path.path.segments,
-                    ty => return Err(Error::UnexpectedSelfTy(ty.clone())),
+                    _ => {
+                        self.push(impl_.to_token_stream());
+                        return Ok(());
+                    }
                 };
                 if impl_.trait_.is_some() || segments.len() != 1 {
                     self.push(impl_.into_token_stream());
@@ -505,11 +513,11 @@ impl Builder {
                     struct_name: name.clone(),
                     inner: TokenStream::new(),
                 });
-                for item in impl_.items {
-                    self.build_impl_item(item)?;
+                for item in &impl_.items {
+                    self.build_impl_item(item.clone())?;
                 }
                 let CurrentImpl { inner, .. } = self.current_impl.take().unwrap();
-                let generics = impl_.generics;
+                let generics = &impl_.generics;
                 self.tokens.extend(quote! {
                     impl #generics #self_ty {
                         #inner

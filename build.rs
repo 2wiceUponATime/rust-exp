@@ -7,6 +7,4 @@ fn main() {
     {
         panic!("{e}");
     }
-
-    return;
 }
