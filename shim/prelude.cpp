@@ -1,4 +1,9 @@
+#include <errno.h>
+#include <exp_apitypes.h>
 #include <stdio.h>
+#include <vex_units.h>
+
+#include <cstdint>
 
 #include "exp_cpp.h"
 
@@ -34,6 +39,29 @@ struct Color {
   bool transparent;
 };
 
+enum class FResult : uint8_t {
+  Ok = 0,
+  DiskErr,
+  IntErr,
+  NotReady,
+  NoFile,
+  NoPath,
+  InvalidName,
+  Denied,
+  Exist,
+  InvalidObject,
+  WriteProtected,
+  InvalidDrive,
+  NotEnabled,
+  NoFilesystem,
+  MkfsAborted,
+  Timeout,
+  Locked,
+  NotEnoughCore,
+  TooManyOpenFiles,
+  InvalidParameter,
+};
+
 velocityUnits to_vex(VelocityUnits in) {
   if (in == VelocityUnits::Percent) {
     return velocityUnits::pct;
@@ -41,32 +69,7 @@ velocityUnits to_vex(VelocityUnits in) {
   return velocityUnits::rpm;
 }
 
-fontType to_vex(FontType in) {
-  switch (in) {
-    case FontType::Mono20:
-      return fontType::mono20;
-    case FontType::Mono30:
-      return fontType::mono30;
-    case FontType::Mono40:
-      return fontType::mono40;
-    case FontType::Mono60:
-      return fontType::mono60;
-    case FontType::Prop20:
-      return fontType::prop20;
-    case FontType::Prop30:
-      return fontType::prop30;
-    case FontType::Prop40:
-      return fontType::prop40;
-    case FontType::Prop60:
-      return fontType::prop60;
-    case FontType::Mono15:
-      return fontType::mono15;
-    case FontType::Mono12:
-      return fontType::mono12;
-    default:
-      return fontType::cjk16;
-  }
-}
+fontType to_vex(FontType in) { return static_cast<fontType>(in); }
 
 color to_vex(Color in) {
   return in.transparent ? color::transparent : color(in.r, in.g, in.b);
@@ -79,4 +82,6 @@ Color from_vex(color out) {
   uint8_t b = value;
   return Color{.r = r, .g = g, .b = b, .transparent = out.isTransparent()};
 }
+
+FResult from_vex(FRESULT in) { return static_cast<FResult>(in); }
 }  // namespace

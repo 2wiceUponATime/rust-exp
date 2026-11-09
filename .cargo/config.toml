@@ -2,5 +2,5 @@
 target = "thumbv7em-none-eabihf"
 
 [target.thumbv7em-none-eabihf]
-linker = "arm-none-eabi-ld"
-rustflags = ["-C", "target-cpu=cortex-m7"]
+linker = "rust-lld"
+rustflags = ["-C", "target-cpu=cortex-m7", "-C", "linker-plugin-lto"]

@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+derive_more = { version = "2.1.1", default-features = false, features = [
+  "full",
+] }
 libm = "0.2.16"
-pastey = "0.2.3"
+lock_api = "0.5.0"
 
 [build-dependencies]
 dotenvy = "0.15.7"
@@ -19,7 +22,6 @@ test = false
 bench = false
 
 [profile.release]
-lto = "thin"
 codegen-units = 1
 
 [[bin]]

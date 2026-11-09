@@ -1,7 +1,7 @@
 #![no_std]
 
 #[cfg(rust_analyzer)]
-#[path = "../bindings.rs"]
+#[path = "../bindings/mod.rs"]
 mod bindings_src;
 
 extern crate alloc;
@@ -15,17 +15,17 @@ pub mod units;
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
-    let _ = flush();
+    let _ = io::flush();
     request_exit();
     loop {
-        sleep(1000);
+        thread::sleep(1000);
     }
 }
 
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => {
-        $crate::_print(format_args!($($arg)*));
+        $crate::io::_print(format_args!($($arg)*));
     };
 }
 
@@ -33,11 +33,11 @@ macro_rules! print {
 macro_rules! println {
     () => {
         $crate::print!("\n");
-        let _ = $crate::flush();
+        let _ = $crate::io::flush();
     };
     ($($arg:tt)*) => {
         $crate::print!("{}\n", format_args!($($arg)*));
-        let _ = $crate::flush();
+        let _ = $crate::io::flush();
     };
 }
 
