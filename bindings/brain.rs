@@ -1,9 +1,9 @@
-use core::ffi::c_char;
+use core::{ffi::c_char, ptr::NonNull};
 
 use alloc::ffi::NulError;
 
 use crate::{
-    CStrArg, IntoCStrPtr, into_callback, opaque,
+    CStrArg, IntoCStrPtr, as_ptr, into_callback, opaque,
     thread::{Mutex, MutexGuard},
     units::{Current, Units, Voltage},
 };
@@ -13,8 +13,8 @@ pub struct RenderError;
 
 static BRAIN: Mutex<Option<&'static Brain>> = Mutex::new(None);
 
-#[repr(u8)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum FontType {
     #[default]
     Mono20 = 0,
@@ -111,20 +111,18 @@ impl Default for Style {
 opaque!(pub Brain);
 
 impl Brain {
-    fn as_ptr(&self) -> *mut Self {
-        self as *const Self as *mut Self
-    }
+    as_ptr!();
 
     #[cpp(func = "new brain")]
     fn new_ptr() -> *mut Brain;
 
-    unsafe fn from_ptr<'a>(ptr: *mut Self) -> &'a Self {
-        unsafe { &*ptr }
+    fn new() -> NonNull<Self> {
+        NonNull::new(Self::new_ptr()).expect("failed to allocate Brain")
     }
 
     pub fn get() -> &'static Self {
         let mut guard = BRAIN.lock();
-        guard.get_or_insert_with(|| unsafe { Self::from_ptr(Self::new_ptr()) })
+        guard.get_or_insert_with(|| unsafe { Self::new().as_ref() })
     }
 
     #[cpp(body = "return &self->buttonUp;")]
@@ -161,9 +159,7 @@ unsafe impl Sync for Brain {}
 opaque!(pub BrainBattery);
 
 impl BrainBattery {
-    fn as_ptr(&self) -> *mut Self {
-        self as *const Self as *mut Self
-    }
+    as_ptr!();
 
     #[cpp(func = "capacity")]
     pub fn capacity_percent(&self) -> f64;
@@ -189,9 +185,7 @@ impl BrainBattery {
 opaque!(pub BrainButton);
 
 impl BrainButton {
-    fn as_ptr(&self) -> *mut Self {
-        self as *const Self as *mut Self
-    }
+    as_ptr!();
 
     pub fn pressing(&self) -> bool;
 
@@ -208,9 +202,7 @@ impl BrainLcd {
     const WIDTH: i32 = 159;
     const HEIGHT: i32 = 107;
 
-    fn as_ptr(&self) -> *mut Self {
-        self as *const Self as *mut Self
-    }
+    as_ptr!();
 
     pub fn get() -> &'static Self {
         Brain::get().lcd()

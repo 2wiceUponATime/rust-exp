@@ -73,6 +73,7 @@ impl Angle {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum VelocityUnits {
     Percent = 0,
     Rpm,

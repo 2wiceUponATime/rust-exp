@@ -70,6 +70,18 @@ fn single<T, P>(p: &Punctuated<T, P>) -> Option<&T> {
     it.next().is_none().then_some(first)
 }
 
+fn single_type_generic<'a>(path: &'a syn::Path, outer: &str) -> Option<&'a Type> {
+    if let Some(seg) = single(&path.segments)
+        && seg.ident == outer
+        && let PathArguments::AngleBracketed(ab) = &seg.arguments
+        && let Some(GenericArgument::Type(inner)) = single(&ab.args)
+    {
+        Some(inner)
+    } else {
+        None
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
@@ -108,20 +120,23 @@ struct CurrentImpl(Ident);
 impl CurrentImpl {
     fn to_cpp(&self) -> String {
         let struct_name = self.0.to_string();
-        match struct_name.as_str() {
-            "BrainBattery" => return "brain::battery".to_owned(),
-            "BrainButton" => return "brain::button".to_owned(),
-            "BrainLcd" | "BrainLcdGuard" => return "brain::lcd".to_owned(),
-            "File" => return "FIL".to_owned(),
-            _ => {}
+        return match struct_name.as_str() {
+            "BrainBattery" => "brain::battery",
+            "BrainButton" => "brain::button",
+            "BrainLcd" | "BrainLcdGuard" => "brain::lcd",
+            "MotorGroup" => "motor_group",
+            "File" => "FIL",
+            _ => return struct_name.to_case(Case::Camel),
         }
-        struct_name.to_case(Case::Camel)
+        .to_owned();
     }
 }
 
 #[derive(Debug)]
 enum FfiTy {
     Unit,
+    U8,
+    U32,
     USize,
     F64,
     CStr,
@@ -144,11 +159,7 @@ impl FfiTy {
                     out.push_str(&impl_.to_cpp());
                     return Ok(());
                 }
-                if let Some(seg) = single(&path.segments)
-                    && seg.ident == "NonNull"
-                    && let PathArguments::AngleBracketed(ab) = &seg.arguments
-                    && let Some(GenericArgument::Type(pointee)) = single(&ab.args)
-                {
+                if let Some(pointee) = single_type_generic(&path, "NonNull") {
                     Self::ty_to_cpp(pointee, out, current)?;
                     out.push('*');
                     return Ok(());
@@ -167,11 +178,12 @@ impl FfiTy {
                     f64 => double,
                     c_char => char,
                     bool => bool,
-                    BrakeType => BrakeType,
                     Color => Color,
+                    BrakeType => BrakeType,
                     Direction => Direction,
                     FontType => FontType,
                     FResult => FResult,
+                    GearSetting => GearSetting,
                     TurnDirection => TurnDirection,
                     VelocityUnits => VelocityUnits,
                     Whence => Whence,
@@ -179,6 +191,8 @@ impl FfiTy {
                     BrainBattery => "brain::battery",
                     BrainButton => "brain::button",
                     BrainLcd => "brain::lcd",
+                    Motor => motor,
+                    MotorGroup | RawMotorGroup => motor_group,
                     File => "FIL",
                 });
             }
@@ -216,6 +230,8 @@ impl FfiTy {
     pub fn as_cpp(&self, current: &Option<CurrentImpl>) -> Result<String, Error> {
         Ok(match self {
             Self::Unit => "void".to_owned(),
+            Self::U8 => "uint8_t".to_owned(),
+            Self::U32 => "uint32_t".to_owned(),
             Self::USize => "size_t".to_owned(),
             Self::F64 => "double".to_owned(),
             Self::CStr => "const char*".to_owned(),
@@ -232,7 +248,8 @@ impl FfiTy {
             Self::VelocityUnits => return format!("{dir}_vex({arg})"),
             Self::Passthrough(ty) if let Type::Path(TypePath { path, .. }) = ty.as_ref() => {
                 match_ident!(path, {
-                    Color | FontType | FResult | Whence => return format!("{dir}_vex({arg})"),
+                    Color | BrakeType | Direction | FontType | FResult | GearSetting | VelocityUnits | Whence
+                        => return format!("{dir}_vex({arg})"),
                 })
             }
             _ => {}
@@ -253,10 +270,12 @@ impl ToTokens for FfiTy {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             Self::Unit => tokens.extend(quote!(())),
+            Self::U8 => tokens.extend(quote!(u8)),
+            Self::U32 => tokens.extend(quote!(u32)),
             Self::USize => tokens.extend(quote!(usize)),
             Self::F64 => tokens.extend(quote!(f64)),
             Self::CStr => tokens.extend(quote!(*const core::ffi::c_char)),
-            Self::VelocityUnits => tokens.extend(quote!(VelocityUnits)),
+            Self::VelocityUnits => tokens.extend(quote!(crate::units::VelocityUnits)),
             Self::Passthrough(ty) => ty.to_tokens(tokens),
         }
     }
@@ -382,20 +401,25 @@ impl Builder {
         match ty {
             Type::Path(TypePath { path, .. }) => {
                 match_ident!(path, {
-                    CString => return single(quote!(#name.as_ptr()), FfiTy::CStr),
-                    Distance => return single(quote!(#name.mm()), FfiTy::F64),
+                    Port => return single(quote!(#name.index()), FfiTy::U8),
                     Angle => return single(quote!(#name.deg()), FfiTy::F64),
-                    Duration => return single(quote!(#name.as_secs_f64() * 1000.0), FfiTy::F64),
+                    Current => return single(quote!(#name.amps()), FfiTy::F64),
+                    Distance => return single(quote!(#name.mm()), FfiTy::F64),
+                    Duration => return single(
+                        quote!(#name.as_millis().try_into().expect("Duration in milliseconds exceeds u32::MAX")),
+                        FfiTy::U32,
+                    ),
+                    Torque => return single(quote!(#name.newton_meters()), FfiTy::F64),
                     Velocity => return vec![
-                        Lowered {
-                            arg: quote!(#name.units()),
-                            name: format_ident!("{name}_units"),
-                            ty: FfiTy::VelocityUnits,
-                        },
                         Lowered {
                             arg: quote!(#name.value()),
                             name: format_ident!("{name}_value"),
                             ty: FfiTy::F64,
+                        },
+                        Lowered {
+                            arg: quote!(#name.units()),
+                            name: format_ident!("{name}_units"),
+                            ty: FfiTy::VelocityUnits,
                         },
                     ],
                 });

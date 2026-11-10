@@ -10,15 +10,54 @@ use core::{
     ops::Deref,
     ptr::NonNull,
 };
+use derive_more::TryFrom;
 
 pub mod brain;
 pub mod fs;
 pub mod io;
+pub mod motor;
 pub mod thread;
 pub mod time;
 
 #[cpp(func = "vexSystemExitRequest")]
 pub fn request_exit();
+
+macro_rules! opaque {
+    ($vis:vis $name:ident) => {
+        #[repr(C)]
+        $vis struct $name {
+            _data: [u8; 0],
+            _mutable: core::cell::UnsafeCell<[u8; 0]>,
+            _marker: core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+        }
+    };
+}
+
+macro_rules! variant {
+    ($vis:vis enum $name:ident {
+        $($variant:ident $(($value:ty))?),+ $(,)?
+    }) => {
+        $vis enum $name {
+            $($variant $(($value))?),+
+        }
+
+        $($(impl From<$value> for $name {
+            fn from(value: $value) -> Self {
+                Self::$variant(value)
+            }
+        })?)+
+    };
+}
+
+macro_rules! as_ptr {
+    () => {
+        fn as_ptr(&self) -> *mut Self {
+            self as *const Self as *mut Self
+        }
+    };
+}
+
+pub(crate) use {as_ptr, opaque, variant};
 
 pub trait CStrArg {
     fn with_cstr<R>(self, f: impl FnOnce(&CStr) -> R) -> Result<R, NulError>;
@@ -50,37 +89,39 @@ pub trait IntoCStrPtr: CStrArg + Sized {
 
 impl<T: CStrArg> IntoCStrPtr for T {}
 
-macro_rules! opaque {
-    ($($vis:vis $name:ident),+ $(,)?) => {
-        $(
-            #[repr(C)]
-            $vis struct $name {
-                _data: [u8; 0],
-                _mutable: core::cell::UnsafeCell<[u8; 0]>,
-                _marker: core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
-            }
-        )+
-    };
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFrom)]
+#[try_from(repr)]
+#[repr(u8)]
+pub enum Port {
+    P1 = 1,
+    P2,
+    P3,
+    P4,
+    P5,
+    P6,
+    P7,
+    P8,
+    P9,
+    P10,
+    P11,
+    P12,
+    P13,
+    P14,
+    P15,
+    P16,
+    P17,
+    P18,
+    P19,
+    P20,
+    P21,
+    P22,
 }
 
-macro_rules! variant {
-    ($vis:vis enum $name:ident {
-        $($variant:ident $(($value:ty))?),+ $(,)?
-    }) => {
-        $vis enum $name {
-            $($variant $(($value))?),+
-        }
-
-        $($(impl From<$value> for $name {
-            fn from(value: $value) -> Self {
-                Self::$variant(value)
-            }
-        })?)+
-    };
+impl Port {
+    pub fn index(self) -> u8 {
+        self as u8 - 1
+    }
 }
-
-pub(crate) use opaque;
-pub(crate) use variant;
 
 pub(crate) fn into_callback<F: Fn() + Send + Sync + 'static>(
     f: F,

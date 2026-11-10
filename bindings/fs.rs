@@ -9,8 +9,8 @@ use alloc::{
 
 use crate::{CStrArg, Free, IntoCStrPtr, Owned, opaque, variant};
 
-#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum FResult {
     Ok = 0,
     DiskErr,
@@ -91,8 +91,8 @@ variant!(
     }
 );
 
-#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 enum Whence {
     Start = 0,
     Current,

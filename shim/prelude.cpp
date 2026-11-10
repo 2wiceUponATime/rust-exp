@@ -1,5 +1,4 @@
 #include <errno.h>
-#include <exp_apitypes.h>
 #include <stdio.h>
 
 #include <cstdint>
@@ -8,14 +7,37 @@
 
 using namespace vex;
 
-namespace {
-template <typename F>
-using fn_ptr = F*;
+#define ASSERT_SAME(a, b)                                                      \
+  static_assert(static_cast<int>(a) == static_cast<int>(b), #a " != " #b)
 
-enum class VelocityUnits : uint8_t {
-  Percent = 0,
-  Rpm,
+namespace {
+
+template <typename F> using fn_ptr = F *;
+
+struct Color {
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+  bool transparent;
 };
+
+enum class BrakeType : uint8_t {
+  Coast = 0,
+  Brake,
+  Hold,
+};
+
+ASSERT_SAME(BrakeType::Coast, brakeType::coast);
+ASSERT_SAME(BrakeType::Brake, brakeType::brake);
+ASSERT_SAME(BrakeType::Hold, brakeType::hold);
+
+enum class Direction : uint8_t {
+  Forward,
+  Reverse,
+};
+
+ASSERT_SAME(Direction::Forward, directionType::fwd);
+ASSERT_SAME(Direction::Reverse, directionType::rev);
 
 enum class FontType : uint8_t {
   Mono20 = 0,
@@ -31,12 +53,17 @@ enum class FontType : uint8_t {
   Cjk16,
 };
 
-struct Color {
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
-  bool transparent;
-};
+ASSERT_SAME(FontType::Mono20, fontType::mono20);
+ASSERT_SAME(FontType::Mono30, fontType::mono30);
+ASSERT_SAME(FontType::Mono40, fontType::mono40);
+ASSERT_SAME(FontType::Mono60, fontType::mono60);
+ASSERT_SAME(FontType::Prop20, fontType::prop20);
+ASSERT_SAME(FontType::Prop30, fontType::prop30);
+ASSERT_SAME(FontType::Prop40, fontType::prop40);
+ASSERT_SAME(FontType::Prop60, fontType::prop60);
+ASSERT_SAME(FontType::Mono15, fontType::mono15);
+ASSERT_SAME(FontType::Mono12, fontType::mono12);
+ASSERT_SAME(FontType::Cjk16, fontType::cjk16);
 
 enum class FResult : uint8_t {
   Ok = 0,
@@ -61,19 +88,78 @@ enum class FResult : uint8_t {
   InvalidParameter,
 };
 
+ASSERT_SAME(FResult::Ok, FR_OK);
+ASSERT_SAME(FResult::DiskErr, FR_DISK_ERR);
+ASSERT_SAME(FResult::IntErr, FR_INT_ERR);
+ASSERT_SAME(FResult::NotReady, FR_NOT_READY);
+ASSERT_SAME(FResult::NoFile, FR_NO_FILE);
+ASSERT_SAME(FResult::NoPath, FR_NO_PATH);
+ASSERT_SAME(FResult::InvalidName, FR_INVALID_NAME);
+ASSERT_SAME(FResult::Denied, FR_DENIED);
+ASSERT_SAME(FResult::Exist, FR_EXIST);
+ASSERT_SAME(FResult::InvalidObject, FR_INVALID_OBJECT);
+ASSERT_SAME(FResult::WriteProtected, FR_WRITE_PROTECTED);
+ASSERT_SAME(FResult::InvalidDrive, FR_INVALID_DRIVE);
+ASSERT_SAME(FResult::NotEnabled, FR_NOT_ENABLED);
+ASSERT_SAME(FResult::NoFilesystem, FR_NO_FILESYSTEM);
+ASSERT_SAME(FResult::MkfsAborted, FR_MKFS_ABORTED);
+ASSERT_SAME(FResult::Timeout, FR_TIMEOUT);
+ASSERT_SAME(FResult::Locked, FR_LOCKED);
+ASSERT_SAME(FResult::NotEnoughCore, FR_NOT_ENOUGH_CORE);
+ASSERT_SAME(FResult::TooManyOpenFiles, FR_TOO_MANY_OPEN_FILES);
+ASSERT_SAME(FResult::InvalidParameter, FR_INVALID_PARAMETER);
+
+enum class GearSetting : uint8_t { R36_1 = 0, R18_1, R6_1 };
+
+ASSERT_SAME(GearSetting::R36_1, gearSetting::ratio36_1);
+ASSERT_SAME(GearSetting::R18_1, gearSetting::ratio18_1);
+ASSERT_SAME(GearSetting::R6_1, gearSetting::ratio6_1);
+
+enum class VelocityUnits : uint8_t {
+  Percent = 0,
+  Rpm,
+};
+
+ASSERT_SAME(VelocityUnits::Percent, velocityUnits::pct);
+ASSERT_SAME(VelocityUnits::Rpm, velocityUnits::rpm);
+
 enum class Whence : uint8_t {
   Start = 0,
   Current,
   End,
 };
 
-fontType to_vex(FontType in) { return static_cast<fontType>(in); }
+ASSERT_SAME(Whence::Start, SEEK_SET);
+ASSERT_SAME(Whence::Current, SEEK_CUR);
+ASSERT_SAME(Whence::End, SEEK_END);
 
 color to_vex(Color in) {
   return in.transparent ? color::transparent : color(in.r, in.g, in.b);
 }
 
+brakeType to_vex(BrakeType in) { return static_cast<brakeType>(in); }
+
+directionType to_vex(Direction in) { return static_cast<directionType>(in); }
+
+fontType to_vex(FontType in) { return static_cast<fontType>(in); }
+
+gearSetting to_vex(GearSetting in) { return static_cast<gearSetting>(in); }
+
+velocityUnits to_vex(VelocityUnits in) {
+  return static_cast<velocityUnits>(in);
+}
+
 int32_t to_vex(Whence in) { return static_cast<int32_t>(in); }
 
+GearSetting from_vex(gearSetting out) { return static_cast<GearSetting>(out); }
+
 FResult from_vex(FRESULT out) { return static_cast<FResult>(out); }
-}  // namespace
+
+motor_group *group_from_motors(motor **motors, size_t motor_count) {
+  auto *g = new motor_group();
+  for (size_t i = 0; i < motor_count; i++) {
+    (*g)(*motors[i]);
+  }
+  return g;
+}
+} // namespace
