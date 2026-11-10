@@ -30,9 +30,7 @@ impl IoError {
     }
 
     pub const fn kind(self) -> IoErrorKind {
-        match self.raw() {
-            _ => IoErrorKind::Other,
-        }
+        IoErrorKind::Other
     }
 
     pub const fn as_result(self) -> Result<(), Self> {
@@ -45,9 +43,9 @@ pub fn _print(args: fmt::Arguments) {
     let _ = Stdout.write_fmt(args);
 }
 
-impl Into<Result<(), Self>> for IoError {
-    fn into(self) -> Result<(), Self> {
-        self.as_result()
+impl From<IoError> for Result<(), IoError> {
+    fn from(value: IoError) -> Self {
+        value.as_result()
     }
 }
 

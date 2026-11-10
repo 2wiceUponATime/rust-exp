@@ -1,11 +1,15 @@
-use super::*;
-
 use alloc::{
     boxed::Box,
     ffi::{CString, NulError},
     string::String,
 };
-use core::ffi::{CStr, c_char};
+use core::{
+    ffi::{CStr, c_char},
+    marker::PhantomData,
+    mem::ManuallyDrop,
+    ops::Deref,
+    ptr::NonNull,
+};
 
 pub mod brain;
 pub mod fs;
@@ -38,13 +42,13 @@ impl CStrArg for String {
     }
 }
 
-pub trait AsCStrPtr: CStrArg + Sized {
-    fn as_cstr_ptr(self) -> Result<*const c_char, NulError> {
+pub trait IntoCStrPtr: CStrArg + Sized {
+    fn into_cstr_ptr(self) -> Result<*const c_char, NulError> {
         self.with_cstr(|c| c.as_ptr())
     }
 }
 
-impl<T: CStrArg> AsCStrPtr for T {}
+impl<T: CStrArg> IntoCStrPtr for T {}
 
 macro_rules! opaque {
     ($($vis:vis $name:ident),+ $(,)?) => {
@@ -59,12 +63,89 @@ macro_rules! opaque {
     };
 }
 
-use opaque;
+macro_rules! variant {
+    ($vis:vis enum $name:ident {
+        $($variant:ident $(($value:ty))?),+ $(,)?
+    }) => {
+        $vis enum $name {
+            $($variant $(($value))?),+
+        }
 
-fn into_callback<F: Fn() + Send + Sync + 'static>(f: F) -> (extern "C" fn(*mut ()), *mut ()) {
+        $($(impl From<$value> for $name {
+            fn from(value: $value) -> Self {
+                Self::$variant(value)
+            }
+        })?)+
+    };
+}
+
+pub(crate) use opaque;
+pub(crate) use variant;
+
+pub(crate) fn into_callback<F: Fn() + Send + Sync + 'static>(
+    f: F,
+) -> (extern "C" fn(*mut ()), *mut ()) {
     extern "C" fn trampoline<F: Fn()>(arg: *mut ()) {
         let f = unsafe { &*(arg as *const F) };
         f();
     }
     (trampoline::<F>, Box::into_raw(Box::new(f)) as *mut ())
 }
+
+pub trait Free {
+    /// # Safety
+    /// - `ptr` must point to a live `T` that was produced by a constructor
+    ///   whose matching release function is this one.
+    /// - The caller must own `ptr`. After this call, `ptr` is dangling.
+    /// - `ptr` must not have been passed to `free` before.
+    unsafe fn free(ptr: NonNull<Self>);
+}
+
+pub struct Owned<T: Free>(NonNull<T>, PhantomData<T>);
+
+impl<T: Free> Owned<T> {
+    /// # Safety
+    /// - Unless null, `ptr` must point to a unique `T` that is live for the
+    ///   entire lifetime of the returned `Owned`.
+    /// - `ptr` must satisfy the safety requirements of [`Free::free`], since
+    ///   it will be pased to `T::free` when the `Owned` is dropped.
+    pub unsafe fn from_raw(ptr: *mut T) -> Option<Self> {
+        NonNull::new(ptr).map(|p| Self(p, PhantomData))
+    }
+
+    /// # Safety
+    /// - `ptr` must point to a unique `T` that is live for the entire lifetime
+    ///   of the returned `Owned`.
+    /// - `ptr` must satisfy the safety requirements of [`Free::free`], since
+    ///   it will be pased to `T::free` when the `Owned` is dropped.
+    pub unsafe fn from_non_null(ptr: NonNull<T>) -> Self {
+        Self(ptr, PhantomData)
+    }
+
+    pub fn into_raw(self) -> *mut T {
+        ManuallyDrop::new(self).0.as_ptr()
+    }
+
+    pub fn leak(self) -> &'static T {
+        unsafe { &*self.into_raw() }
+    }
+}
+
+impl<T: Free> Deref for Owned<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { self.0.as_ref() }
+    }
+}
+
+impl<T: Free> Drop for Owned<T> {
+    fn drop(&mut self) {
+        unsafe {
+            T::free(self.0);
+        }
+    }
+}
+
+unsafe impl<T: Free + Send> Send for Owned<T> {}
+unsafe impl<T: Free + Sync> Sync for Owned<T> {}

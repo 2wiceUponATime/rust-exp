@@ -1,7 +1,6 @@
 #include <errno.h>
 #include <exp_apitypes.h>
 #include <stdio.h>
-#include <vex_units.h>
 
 #include <cstdint>
 
@@ -15,7 +14,7 @@ using fn_ptr = F*;
 
 enum class VelocityUnits : uint8_t {
   Percent = 0,
-  Rpm = 1,
+  Rpm,
 };
 
 enum class FontType : uint8_t {
@@ -62,12 +61,11 @@ enum class FResult : uint8_t {
   InvalidParameter,
 };
 
-velocityUnits to_vex(VelocityUnits in) {
-  if (in == VelocityUnits::Percent) {
-    return velocityUnits::pct;
-  }
-  return velocityUnits::rpm;
-}
+enum class Whence : uint8_t {
+  Start = 0,
+  Current,
+  End,
+};
 
 fontType to_vex(FontType in) { return static_cast<fontType>(in); }
 
@@ -75,13 +73,7 @@ color to_vex(Color in) {
   return in.transparent ? color::transparent : color(in.r, in.g, in.b);
 }
 
-Color from_vex(color out) {
-  uint32_t value = out.rgb();
-  uint8_t r = value >> 16;
-  uint8_t g = value >> 8;
-  uint8_t b = value;
-  return Color{.r = r, .g = g, .b = b, .transparent = out.isTransparent()};
-}
+int32_t to_vex(Whence in) { return static_cast<int32_t>(in); }
 
-FResult from_vex(FRESULT in) { return static_cast<FResult>(in); }
+FResult from_vex(FRESULT out) { return static_cast<FResult>(out); }
 }  // namespace

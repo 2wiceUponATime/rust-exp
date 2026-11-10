@@ -9,8 +9,9 @@ use indoc::formatdoc;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
 use syn::{
-    Attribute, FnArg, ForeignItemFn, Ident, ImplItem, Item, ItemMod, LitStr, Meta, Pat, PatIdent,
-    ReturnType, Type, TypeParen, TypePath, TypePtr,
+    Attribute, FnArg, ForeignItemFn, GenericArgument, Ident, ImplItem, Item, ItemImpl, ItemMod,
+    LitBool, LitStr, Meta, Pat, PatIdent, PathArguments, ReturnType, Type, TypeParen, TypePath,
+    TypePtr, punctuated::Punctuated,
 };
 
 #[macro_export]
@@ -63,6 +64,12 @@ pub fn env_path(key: &str) -> PathBuf {
     PathBuf::from(env(key))
 }
 
+fn single<T, P>(p: &Punctuated<T, P>) -> Option<&T> {
+    let mut it = p.iter();
+    let first = it.next()?;
+    it.next().is_none().then_some(first)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
@@ -72,7 +79,7 @@ pub enum Error {
     #[error("found multiple #[cpp(...)] attributes")]
     MultipleCppAttrs,
     #[error("unable to convert to C++ type: {:?}", .0.to_token_stream().to_string())]
-    CannotConvertToCppType(Type),
+    CannotConvertToCppType(Box<Type>),
     #[error("string formatting error")]
     Fmt,
 }
@@ -105,6 +112,7 @@ impl CurrentImpl {
             "BrainBattery" => return "brain::battery".to_owned(),
             "BrainButton" => return "brain::button".to_owned(),
             "BrainLcd" | "BrainLcdGuard" => return "brain::lcd".to_owned(),
+            "File" => return "FIL".to_owned(),
             _ => {}
         }
         struct_name.to_case(Case::Camel)
@@ -118,14 +126,14 @@ enum FfiTy {
     F64,
     CStr,
     VelocityUnits,
-    Passthrough(Type),
+    Passthrough(Box<Type>),
 }
 
 impl FfiTy {
     fn ty_to_cpp(ty: &Type, out: &mut String, current: &Option<CurrentImpl>) -> Result<(), Error> {
         match ty {
             Type::Paren(TypeParen { elem, .. }) => return Self::ty_to_cpp(elem, out, current),
-            Type::Tuple(t) if t.elems.len() == 0 => {
+            Type::Tuple(t) if t.elems.is_empty() => {
                 out.push_str("void");
                 return Ok(());
             }
@@ -134,6 +142,15 @@ impl FfiTy {
                     && let Some(impl_) = current
                 {
                     out.push_str(&impl_.to_cpp());
+                    return Ok(());
+                }
+                if let Some(seg) = single(&path.segments)
+                    && seg.ident == "NonNull"
+                    && let PathArguments::AngleBracketed(ab) = &seg.arguments
+                    && let Some(GenericArgument::Type(pointee)) = single(&ab.args)
+                {
+                    Self::ty_to_cpp(pointee, out, current)?;
+                    out.push('*');
                     return Ok(());
                 }
                 idents_to_cpp!(path, out, {
@@ -151,16 +168,18 @@ impl FfiTy {
                     c_char => char,
                     bool => bool,
                     BrakeType => BrakeType,
+                    Color => Color,
                     Direction => Direction,
                     FontType => FontType,
+                    FResult => FResult,
                     TurnDirection => TurnDirection,
                     VelocityUnits => VelocityUnits,
-                    Color => Color,
+                    Whence => Whence,
                     Brain => brain,
                     BrainBattery => "brain::battery",
                     BrainButton => "brain::button",
                     BrainLcd => "brain::lcd",
-                    SdCard => "brain::sdcard",
+                    File => "FIL",
                 });
             }
             Type::FnPtr(f) => {
@@ -171,7 +190,7 @@ impl FfiTy {
                         out.push_str("void");
                     }
                 }
-                out.push_str("(");
+                out.push('(');
                 if f.inputs.is_empty() {
                     out.push_str("void");
                 }
@@ -191,7 +210,7 @@ impl FfiTy {
             }
             _ => {}
         };
-        Err(Error::CannotConvertToCppType(ty.clone()))
+        Err(Error::CannotConvertToCppType(Box::new(ty.clone())))
     }
 
     pub fn as_cpp(&self, current: &Option<CurrentImpl>) -> Result<String, Error> {
@@ -211,9 +230,9 @@ impl FfiTy {
     fn map_cpp(&self, arg: String, dir: &str) -> String {
         match self {
             Self::VelocityUnits => return format!("{dir}_vex({arg})"),
-            Self::Passthrough(ty) if let Type::Path(TypePath { path, .. }) = ty => {
+            Self::Passthrough(ty) if let Type::Path(TypePath { path, .. }) = ty.as_ref() => {
                 match_ident!(path, {
-                    FontType | Color => return format!("{dir}_vex({arg})"),
+                    Color | FontType | FResult | Whence => return format!("{dir}_vex({arg})"),
                 })
             }
             _ => {}
@@ -254,6 +273,7 @@ struct Lowered {
 struct Attrs {
     func_override: Option<String>,
     body_override: Option<String>,
+    allow_method: bool,
 }
 
 #[derive(Default)]
@@ -319,6 +339,7 @@ impl Builder {
         }
         let mut func_override = None;
         let mut body_override = None;
+        let mut allow_method = true;
         if let Some(meta_list) = meta_list {
             meta_list.parse_nested_meta(|meta| {
                 match_ident!(&meta.path, {
@@ -329,7 +350,15 @@ impl Builder {
                     body => {
                         body_override = Some(meta.value()?.parse::<LitStr>()?.value());
                         return Ok(());
-                    }
+                    },
+                    method => {
+                        let value = meta.value()?.parse::<LitBool>()?.value();
+                        if value {
+                            return Err(meta.error("only `method = false` is allowed"))
+                        }
+                        allow_method = false;
+                        return Ok(())
+                    },
                 });
                 Err(meta.error("unsupported attribute"))
             })?;
@@ -337,6 +366,7 @@ impl Builder {
         let attrs = Attrs {
             func_override,
             body_override,
+            allow_method,
         };
         Ok((attrs, rest))
     }
@@ -367,7 +397,7 @@ impl Builder {
                             name: format_ident!("{name}_value"),
                             ty: FfiTy::F64,
                         },
-                    ]
+                    ],
                 });
             }
             Type::Reference(type_ref)
@@ -389,7 +419,10 @@ impl Builder {
             }
             _ => {}
         }
-        single(name.to_token_stream(), FfiTy::Passthrough(ty.clone()))
+        single(
+            name.to_token_stream(),
+            FfiTy::Passthrough(Box::new(ty.clone())),
+        )
     }
 
     fn build_verbatim(&mut self, tokens: TokenStream) -> Result<(), Error> {
@@ -403,14 +436,14 @@ impl Builder {
         let name = &decl.sig.ident;
         let ffi_name = format_ident!("shim_{prefix}{name}");
         let output = &decl.sig.output;
-        let mut is_method = false;
+        let mut has_self = false;
         let lowered_inputs = decl
             .sig
             .inputs
             .iter()
             .map(|arg| match arg {
                 FnArg::Receiver(_) => {
-                    is_method = true;
+                    has_self = true;
                     Ok(vec![])
                 }
                 FnArg::Typed(pat_ty) => {
@@ -420,19 +453,21 @@ impl Builder {
                             "destructuring parameters are not allowed",
                         ));
                     };
-                    Ok(Self::lower_input(&pat_ty.ty, &ident))
+                    Ok(Self::lower_input(&pat_ty.ty, ident))
                 }
             })
             .try_fold(Vec::new(), |mut acc, item| {
                 acc.extend(item?);
                 Ok::<_, Error>(acc)
             })?;
+        let is_method = has_self && attrs.allow_method;
         let (lowered_args, lowered_params, lowered_tys): (Vec<_>, Vec<_>, Vec<_>) =
             itertools::multiunzip(lowered_inputs.into_iter().map(|l| (l.arg, l.name, l.ty)));
-        let (self_param, self_arg) = if is_method {
-            let struct_name = match self.current_impl.as_ref().unwrap().0.to_string().as_str() {
-                "BrainLcdGuard" => format_ident!("BrainLcd"),
-                name => format_ident!("{name}"),
+        let (self_param, self_arg) = if has_self {
+            let ident = &self.current_impl.as_ref().unwrap().0;
+            let struct_name = match ident.to_string().as_str() {
+                "BrainLcdGuard" => &format_ident!("BrainLcd"),
+                _ => ident,
             };
             (quote!(self_: *mut #struct_name,), quote!(self.as_ptr(),))
         } else {
@@ -450,7 +485,7 @@ impl Builder {
         });
         let output = match decl.sig.output {
             ReturnType::Default => FfiTy::Unit,
-            ReturnType::Type(_, ty) => FfiTy::Passthrough(*ty.clone()),
+            ReturnType::Type(_, ty) => FfiTy::Passthrough(ty.clone()),
         };
         let ret = output.as_cpp(&self.current_impl)?;
         let mut params = lowered_tys
@@ -459,14 +494,24 @@ impl Builder {
             .map(|(t, p)| Ok(format!("{} {p}", t.as_cpp(&self.current_impl)?)))
             .collect::<Result<Vec<_>, Error>>()?
             .join(", ");
+        let mut args = lowered_tys
+            .iter()
+            .zip(&lowered_params)
+            .map(|(t, p)| t.map_cpp_in(p.to_string()))
+            .collect::<Vec<_>>()
+            .join(", ");
         let mut func_prefix = "";
-        if is_method && let Some(current) = &self.current_impl {
+        if has_self && let Some(current) = &self.current_impl {
             params = format!(
                 "{}* self{}{params}",
                 current.to_cpp(),
-                if lowered_params.len() > 0 { ", " } else { "" }
+                if !lowered_params.is_empty() { ", " } else { "" }
             );
-            func_prefix = "self->";
+            if is_method {
+                func_prefix = "self->";
+            } else {
+                args = format!("self{}{args}", if !args.is_empty() { ", " } else { "" })
+            }
         }
         let body = attrs.body_override.unwrap_or_else(|| {
             let func = format!(
@@ -475,12 +520,6 @@ impl Builder {
                     .func_override
                     .unwrap_or_else(|| name.to_string().to_case(Case::Camel)),
             );
-            let args = lowered_tys
-                .iter()
-                .zip(&lowered_params)
-                .map(|(t, p)| t.map_cpp_in(p.to_string()))
-                .collect::<Vec<_>>()
-                .join(", ");
             format!(
                 "{}{};",
                 if ret == "void" { "" } else { "return " },
@@ -518,19 +557,15 @@ impl Builder {
             Item::Verbatim(tokens) => return self.build_verbatim(tokens),
             Item::Impl(impl_) => {
                 let self_ty = impl_.self_ty.as_ref();
-                let segments = match self_ty {
-                    Type::Path(path) => &path.path.segments,
+                let segment = match self_ty {
+                    Type::Path(path) if let Some(segment) = single(&path.path.segments) => segment,
                     _ => {
                         self.push(impl_.to_token_stream());
                         return Ok(());
                     }
                 };
-                if impl_.trait_.is_some() || segments.len() != 1 {
-                    self.push(impl_.into_token_stream());
-                    return Ok(());
-                }
 
-                let name = &segments[0].ident;
+                let name = &segment.ident;
                 self.current_impl = Some(CurrentImpl(name.clone()));
 
                 let outer = mem::take(&mut self.tokens);
@@ -540,9 +575,17 @@ impl Builder {
                 self.current_impl = None;
                 let inner = mem::replace(&mut self.tokens, outer);
 
-                let generics = &impl_.generics;
+                let ItemImpl {
+                    generics,
+                    trait_,
+                    unsafety,
+                    ..
+                } = &impl_;
+                let trait_ = trait_
+                    .as_ref()
+                    .map(|(path, for_token)| quote!(#path #for_token));
                 self.tokens.extend(quote! {
-                    impl #generics #self_ty {
+                    #unsafety impl #generics #trait_ #self_ty {
                         #inner
                     }
                 });

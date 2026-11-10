@@ -3,12 +3,10 @@ use core::ffi::c_char;
 use alloc::ffi::NulError;
 
 use crate::{
-    AsCStrPtr, CStrArg,
+    CStrArg, IntoCStrPtr, into_callback, opaque,
     thread::{Mutex, MutexGuard},
     units::{Current, Units, Voltage},
 };
-
-use super::{into_callback, opaque};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct RenderError;
@@ -16,7 +14,7 @@ pub struct RenderError;
 static BRAIN: Mutex<Option<&'static Brain>> = Mutex::new(None);
 
 #[repr(u8)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum FontType {
     #[default]
     Mono20 = 0,
@@ -121,7 +119,7 @@ impl Brain {
     fn new_ptr() -> *mut Brain;
 
     unsafe fn from_ptr<'a>(ptr: *mut Self) -> &'a Self {
-        unsafe { &*(ptr as *mut Self) }
+        unsafe { &*ptr }
     }
 
     pub fn get() -> &'static Self {
@@ -311,11 +309,11 @@ impl BrainLcdGuard {
     fn get_string_height_inner(&self, text: *const c_char) -> i32;
 
     pub fn get_string_width(&self, text: impl CStrArg) -> Result<i32, NulError> {
-        Ok(self.get_string_width_inner(text.as_cstr_ptr()?))
+        Ok(self.get_string_width_inner(text.into_cstr_ptr()?))
     }
 
     pub fn get_string_height(&self, text: impl CStrArg) -> Result<i32, NulError> {
-        Ok(self.get_string_height_inner(text.as_cstr_ptr()?))
+        Ok(self.get_string_height_inner(text.into_cstr_ptr()?))
     }
 
     #[cpp(body = r#"self->print("%.*s", (int)text_len, text_chars);"#)]
