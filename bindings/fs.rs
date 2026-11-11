@@ -7,7 +7,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{CStrArg, Free, IntoCStrPtr, Owned, opaque, variant};
+use crate::{CStrArg, Free, IntoCStrPtr, Owned, as_ptr, opaque, variant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -196,9 +196,7 @@ impl File {
         open_create => open_create_inner,
     }
 
-    fn as_ptr(&self) -> *mut Self {
-        self as *const Self as *mut Self
-    }
+    as_ptr!();
 
     #[cpp(func = "vexFileSize", method = false)]
     fn size_inner(&self) -> i32;

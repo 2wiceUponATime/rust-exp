@@ -201,6 +201,7 @@ impl FfiTy {
                     ControllerAxis => "controller::axis",
                     ControllerButton => "controller::button",
                     ControllerLcd | ControllerLcdGuard => "controller::lcd",
+                    Drivetrain | RawDrivetrain => drivetrain,
                     Motor => motor,
                     MotorGroup | RawMotorGroup => motor_group,
                     File => "FIL",
@@ -259,7 +260,7 @@ impl FfiTy {
             Self::Passthrough(ty) if let Type::Path(TypePath { path, .. }) = ty.as_ref() => {
                 match_ident!(path, {
                     Color | BrakeType | ControllerType | Direction | FontType | FResult
-                    | GearSetting | VelocityUnits | Whence => return format!("{dir}_vex({arg})"),
+                    | GearSetting | TurnDirection | VelocityUnits | Whence => return format!("{dir}_vex({arg})"),
                 });
             }
             _ => {}
@@ -422,7 +423,7 @@ impl Builder {
                     Velocity => return vec![
                         Lowered {
                             arg: quote!(#name.value()),
-                            name: format_ident!("{name}_value"),
+                            name: name.clone(),
                             ty: FfiTy::F64,
                         },
                         Lowered {
@@ -440,7 +441,7 @@ impl Builder {
                 return vec![
                     Lowered {
                         arg: quote!(#name.as_ptr()),
-                        name: format_ident!("{name}_chars"),
+                        name: name.clone(),
                         ty: FfiTy::CStr,
                     },
                     Lowered {
@@ -460,7 +461,6 @@ impl Builder {
 
     fn build_verbatim(&mut self, tokens: TokenStream) -> Result<(), Error> {
         let decl: ForeignItemFn = syn::parse2(tokens)?;
-        let vis = decl.vis;
         let (attrs, rest) = Self::parse_attrs(&decl.attrs)?;
         let mut prefix: String = self.mod_path.iter().map(|m| format!("{m}_")).collect();
         if let Some(CurrentImpl(struct_name)) = &self.current_impl {
@@ -507,7 +507,7 @@ impl Builder {
         } else {
             (TokenStream::new(), TokenStream::new())
         };
-        let sig = &decl.sig;
+        let ForeignItemFn { vis, sig, .. } = &decl;
         self.push(quote! {
             #(#rest)*
             #vis #sig {

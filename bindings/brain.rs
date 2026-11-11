@@ -255,7 +255,7 @@ pub struct BrainLcdGuard {
 }
 
 impl BrainLcdGuard {
-    fn as_ptr(&self) -> *mut BrainLcd {
+    pub(crate) fn as_ptr(&self) -> *mut BrainLcd {
         self.lcd.as_ptr()
     }
 
@@ -308,10 +308,10 @@ impl BrainLcdGuard {
         Ok(self.get_string_height_inner(text.into_cstr_ptr()?))
     }
 
-    #[cpp(body = r#"self->print("%.*s", (int)text_len, text_chars);"#)]
+    #[cpp(body = r#"self->print("%.*s", (int)text_len, text);"#)]
     pub fn print(&self, text: &str);
 
-    #[cpp(body = r#"self->printAt(x, y, opaque, "%.*s", (int)text_len, text_chars);"#)]
+    #[cpp(body = r#"self->printAt(x, y, opaque, "%.*s", (int)text_len, text);"#)]
     pub fn print_at(&self, x: i32, y: i32, opaque: bool, text: &str);
 
     pub fn print_at_opaque(&self, x: i32, y: i32, text: &str) -> Result<(), NulError> {

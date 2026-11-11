@@ -63,12 +63,10 @@ impl Motor {
 
     pub fn spin(&self, dir: Direction, velocity: Velocity);
 
-    #[cpp(body = "self->spinToPosition(angle, deg, velocity_value, to_vex(velocity_units), wait);")]
+    #[cpp(body = "self->spinToPosition(angle, deg, velocity, to_vex(velocity_units), wait);")]
     pub fn spin_to(&self, angle: Angle, velocity: Velocity, wait: bool);
 
-    #[cpp(
-        body = "self->spinFor(to_vex(dir), angle, deg, velocity_value, to_vex(velocity_units), wait);"
-    )]
+    #[cpp(body = "self->spinFor(to_vex(dir), angle, deg, velocity, to_vex(velocity_units), wait);")]
     pub fn spin_for(&self, dir: Direction, angle: Angle, velocity: Velocity, wait: bool);
 
     pub fn is_spinning(&self) -> bool;
@@ -154,7 +152,7 @@ impl Free for Motor {
     unsafe fn free(ptr: NonNull<Motor>);
 }
 
-opaque!(RawMotorGroup);
+opaque!(pub(crate) RawMotorGroup);
 
 #[repr(C)]
 pub struct MotorGroup<'a> {
@@ -192,12 +190,10 @@ impl<'a> MotorGroup<'a> {
 
     pub fn spin(&self, dir: Direction, velocity: Velocity);
 
-    #[cpp(body = "self->spinToPosition(angle, deg, velocity_value, to_vex(velocity_units), wait);")]
+    #[cpp(body = "self->spinToPosition(angle, deg, velocity, to_vex(velocity_units), wait);")]
     pub fn spin_to(&self, angle: Angle, velocity: Velocity, wait: bool);
 
-    #[cpp(
-        body = "self->spinFor(to_vex(dir), angle, deg, velocity_value, to_vex(velocity_units), wait);"
-    )]
+    #[cpp(body = "self->spinFor(to_vex(dir), angle, deg, velocity, to_vex(velocity_units), wait);")]
     pub fn spin_for(&self, dir: Direction, angle: Angle, velocity: Velocity, wait: bool);
 
     pub fn is_spinning(&self) -> bool;

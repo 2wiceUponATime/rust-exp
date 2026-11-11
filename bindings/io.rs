@@ -3,7 +3,7 @@ use core::fmt::{self, Write};
 #[cpp(body = "return errno;")]
 fn errno() -> i32;
 
-#[cpp(body = r#"printf("%.*s", (int)value_len, value_chars);"#)]
+#[cpp(body = r#"printf("%.*s", (int)value_len, value);"#)]
 pub fn print_str(value: &str);
 
 #[cpp(body = "return fflush(stdout);")]

@@ -14,6 +14,7 @@ use derive_more::TryFrom;
 
 pub mod brain;
 pub mod controller;
+pub mod drivetrain;
 pub mod fs;
 pub mod io;
 pub mod motor;
@@ -52,7 +53,7 @@ macro_rules! variant {
 
 macro_rules! as_ptr {
     () => {
-        fn as_ptr(&self) -> *mut Self {
+        pub(crate) fn as_ptr(&self) -> *mut Self {
             self as *const Self as *mut Self
         }
     };

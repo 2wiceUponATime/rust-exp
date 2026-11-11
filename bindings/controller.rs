@@ -184,13 +184,13 @@ pub struct ControllerLcdGuard {
 }
 
 impl ControllerLcdGuard {
-    pub fn as_ptr(&self) -> *mut ControllerLcd {
+    pub(crate) fn as_ptr(&self) -> *mut ControllerLcd {
         self.lcd.as_ptr()
     }
 
     pub fn set_cursor(&self, row: i32, col: i32);
 
-    #[cpp(body = r#"self->print("%.*s", (int)text_len, text_chars);"#)]
+    #[cpp(body = r#"self->print("%.*s", (int)text_len, text);"#)]
     pub fn print(&self, text: &str);
 
     #[cpp(func = "clearScreen")]
