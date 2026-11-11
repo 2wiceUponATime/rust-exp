@@ -124,6 +124,9 @@ impl CurrentImpl {
             "BrainBattery" => "brain::battery",
             "BrainButton" => "brain::button",
             "BrainLcd" | "BrainLcdGuard" => "brain::lcd",
+            "ControllerAxis" => "controller::axis",
+            "ControllerButton" => "controller::button",
+            "ControllerLcd" | "ControllerLcdGuard" => "controller::lcd",
             "MotorGroup" => "motor_group",
             "File" => "FIL",
             _ => return struct_name.to_case(Case::Camel),
@@ -179,7 +182,10 @@ impl FfiTy {
                     c_char => char,
                     bool => bool,
                     Color => Color,
+                    AxisType => AxisType,
                     BrakeType => BrakeType,
+                    ButtonType => ButtonType,
+                    ControllerType => ControllerType,
                     Direction => Direction,
                     FontType => FontType,
                     FResult => FResult,
@@ -191,6 +197,10 @@ impl FfiTy {
                     BrainBattery => "brain::battery",
                     BrainButton => "brain::button",
                     BrainLcd => "brain::lcd",
+                    Controller => controller,
+                    ControllerAxis => "controller::axis",
+                    ControllerButton => "controller::button",
+                    ControllerLcd | ControllerLcdGuard => "controller::lcd",
                     Motor => motor,
                     MotorGroup | RawMotorGroup => motor_group,
                     File => "FIL",
@@ -248,9 +258,9 @@ impl FfiTy {
             Self::VelocityUnits => return format!("{dir}_vex({arg})"),
             Self::Passthrough(ty) if let Type::Path(TypePath { path, .. }) = ty.as_ref() => {
                 match_ident!(path, {
-                    Color | BrakeType | Direction | FontType | FResult | GearSetting | VelocityUnits | Whence
-                        => return format!("{dir}_vex({arg})"),
-                })
+                    Color | BrakeType | ControllerType | Direction | FontType | FResult
+                    | GearSetting | VelocityUnits | Whence => return format!("{dir}_vex({arg})"),
+                });
             }
             _ => {}
         }
@@ -323,7 +333,6 @@ impl Builder {
                 .iter()
                 .map(|arg| arg.to_string_lossy().into_owned()),
         );
-        arguments.extend(["--target=arm-none-eabi", "-nostdlibinc", "-c", file].map(String::from));
 
         let db = serde_json::json!([{
             "directory": env("CARGO_MANIFEST_DIR"),
@@ -491,6 +500,7 @@ impl Builder {
             let ident = &self.current_impl.as_ref().unwrap().0;
             let struct_name = match ident.to_string().as_str() {
                 "BrainLcdGuard" => &format_ident!("BrainLcd"),
+                "ControllerLcdGuard" => &format_ident!("ControllerLcd"),
                 _ => ident,
             };
             (quote!(self_: *mut #struct_name,), quote!(self.as_ptr(),))
@@ -715,7 +725,6 @@ impl Builder {
             .cpp_link_stdlib(None)
             .std("gnu++17")
             .flags([
-                "--target=thumbv7em-none-eabihf",
                 "-nostdlibinc",
                 "-mcpu=cortex-m7",
                 "-mfloat-abi=hard",
@@ -740,7 +749,7 @@ impl Builder {
             .define("__INT32_TYPE__", "long")
             .define("__UINT32_TYPE__", "unsigned long");
 
-        Self::write_compile_commands(&build, &out_dir.join("shim/prelude.cpp").to_string_lossy());
+        Self::write_compile_commands(&build, "shim/prelude.cpp");
 
         build.file(shim_file).compile("rust_exp_shim");
 

@@ -13,6 +13,7 @@ use core::{
 use derive_more::TryFrom;
 
 pub mod brain;
+pub mod controller;
 pub mod fs;
 pub mod io;
 pub mod motor;
@@ -168,7 +169,7 @@ impl<T: Free> Owned<T> {
     }
 
     pub fn leak(self) -> &'static T {
-        unsafe { &*self.into_raw() }
+        unsafe { self.into_raw().as_ref_unchecked() }
     }
 }
 

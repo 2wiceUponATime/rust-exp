@@ -7,18 +7,32 @@
 
 using namespace vex;
 
-#define ASSERT_SAME(a, b)                                                      \
+#define ASSERT_SAME(a, b) \
   static_assert(static_cast<int>(a) == static_cast<int>(b), #a " != " #b)
+#define AXIS_CASE(variant) \
+  case AxisType::variant:  \
+    return const_cast<controller::axis*>(&c->variant);
+#define BUTTON_CASE(variant) \
+  case ButtonType::variant:  \
+    return const_cast<controller::button*>(&c->Button##variant);
 
 namespace {
 
-template <typename F> using fn_ptr = F *;
+template <typename F>
+using fn_ptr = F*;
 
 struct Color {
   uint8_t r;
   uint8_t g;
   uint8_t b;
   bool transparent;
+};
+
+enum class AxisType : uint8_t {
+  Axis3 = 0,
+  Axis4,
+  Axis1,
+  Axis2,
 };
 
 enum class BrakeType : uint8_t {
@@ -30,6 +44,31 @@ enum class BrakeType : uint8_t {
 ASSERT_SAME(BrakeType::Coast, brakeType::coast);
 ASSERT_SAME(BrakeType::Brake, brakeType::brake);
 ASSERT_SAME(BrakeType::Hold, brakeType::hold);
+
+enum class ButtonType : uint8_t {
+  L1 = 0,
+  L2,
+  R1,
+  R2,
+  Up,
+  Down,
+  Left,
+  Right,
+  X,
+  B,
+  Y,
+  A,
+  L3,
+  R3,
+};
+
+enum class ControllerType : uint8_t {
+  Primary = 0,
+  Partner,
+};
+
+ASSERT_SAME(ControllerType::Primary, controllerType::primary);
+ASSERT_SAME(ControllerType::Partner, controllerType::partner);
 
 enum class Direction : uint8_t {
   Forward,
@@ -139,6 +178,10 @@ color to_vex(Color in) {
 
 brakeType to_vex(BrakeType in) { return static_cast<brakeType>(in); }
 
+controllerType to_vex(ControllerType in) {
+  return static_cast<controllerType>(in);
+}
+
 directionType to_vex(Direction in) { return static_cast<directionType>(in); }
 
 fontType to_vex(FontType in) { return static_cast<fontType>(in); }
@@ -155,11 +198,39 @@ GearSetting from_vex(gearSetting out) { return static_cast<GearSetting>(out); }
 
 FResult from_vex(FRESULT out) { return static_cast<FResult>(out); }
 
-motor_group *group_from_motors(motor **motors, size_t motor_count) {
-  auto *g = new motor_group();
+motor_group* group_from_motors(motor** motors, size_t motor_count) {
+  auto* g = new motor_group();
   for (size_t i = 0; i < motor_count; i++) {
     (*g)(*motors[i]);
   }
   return g;
 }
-} // namespace
+
+controller::button* get_controller_button(controller* c, ButtonType type) {
+  switch (type) {
+    BUTTON_CASE(L1);
+    BUTTON_CASE(L2);
+    BUTTON_CASE(R1);
+    BUTTON_CASE(R2);
+    BUTTON_CASE(Up);
+    BUTTON_CASE(Down);
+    BUTTON_CASE(Left);
+    BUTTON_CASE(Right);
+    BUTTON_CASE(X);
+    BUTTON_CASE(B);
+    BUTTON_CASE(Y);
+    BUTTON_CASE(A);
+    BUTTON_CASE(L3);
+    BUTTON_CASE(R3);
+  }
+}
+
+controller::axis* get_controller_axis(controller* c, AxisType type) {
+  switch (type) {
+    AXIS_CASE(Axis1);
+    AXIS_CASE(Axis2);
+    AXIS_CASE(Axis3);
+    AXIS_CASE(Axis4);
+  }
+}
+}  // namespace

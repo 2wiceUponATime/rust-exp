@@ -129,21 +129,21 @@ impl Brain {
     fn button_up_ptr(&self) -> *mut BrainButton;
 
     pub fn button_up(&self) -> &BrainButton {
-        unsafe { &*self.button_up_ptr() }
+        unsafe { self.button_up_ptr().as_ref_unchecked() }
     }
 
     #[cpp(body = "return &self->Screen;")]
     fn lcd_ptr(&self) -> *mut BrainLcd;
 
     pub fn lcd(&self) -> &BrainLcd {
-        unsafe { &*self.lcd_ptr() }
+        unsafe { self.lcd_ptr().as_ref_unchecked() }
     }
 
     #[cpp(body = "return &self->Battery;")]
     fn battery_ptr(&self) -> *mut BrainBattery;
 
     pub fn battery(&self) -> &BrainBattery {
-        unsafe { &*self.battery_ptr() }
+        unsafe { self.battery_ptr().as_ref_unchecked() }
     }
 }
 
